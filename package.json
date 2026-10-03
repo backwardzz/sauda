@@ -14,6 +14,7 @@
     "test": "tsx scripts/test-units.ts && tsx scripts/smoke.ts",
     "test:units": "tsx scripts/test-units.ts",
     "seed": "tsx scripts/seed.ts",
+    "dev-user": "tsx scripts/dev-user.ts",
     "import": "tsx scripts/import-catalog.ts"
   },
   "dependencies": {

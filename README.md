@@ -78,9 +78,21 @@ npm run build      # проверка типов и сборка в dist/
 
 ## Выкладка в интернет
 
-1. Создать проект на supabase.com, выполнить `npx supabase link` и `npx supabase db push` — миграции применятся к облачной базе.
-2. В `.env.local` (или в переменных сборки) указать `VITE_SUPABASE_URL` и `VITE_SUPABASE_ANON_KEY` облачного проекта.
-3. `npm run build` и выложить папку `dist` на любой статический хостинг.
+Сайт собирается и выкладывается на GitHub Pages сам при каждом пуше в `main` (`.github/workflows/pages.yml`).
+Чтобы он работал у всех, ему нужна облачная база:
+
+1. На [supabase.com](https://supabase.com) создать бесплатный проект, запомнить пароль базы.
+2. На своём компьютере в папке проекта: `npx supabase login`, `npx supabase link` (выбрать проект)
+   и `npx supabase db push` — миграции применятся к облачной базе.
+3. В панели Supabase, Settings → API, взять Project URL и ключ `anon`. В репозитории на GitHub,
+   Settings → Secrets and variables → Actions → Variables, создать переменные `VITE_SUPABASE_URL` и
+   `VITE_SUPABASE_ANON_KEY` с этими значениями.
+4. В панели Supabase, Authentication → URL Configuration, указать Site URL `https://backwardzz.github.io/sauda/` —
+   на него ведут ссылки из писем.
+5. Перезапустить сборку: Actions → Deploy to GitHub Pages → Run workflow.
+6. Вход `dev` / `admin1` в облаке: во временном `.env.local` указать облачные `VITE_SUPABASE_URL` и
+   `SUPABASE_SERVICE_ROLE_KEY` (ключ `service_role` из Settings → API, никому не передавать) и выполнить
+   `npm run dev-user`. Пароль `admin1` слабый: для настоящих магазинов заведите отдельные входы.
 
 В облачном проекте оставьте включённым подтверждение почты: приглашения сотрудников срабатывают только для
 подтверждённого адреса.
