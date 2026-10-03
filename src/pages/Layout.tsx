@@ -33,7 +33,11 @@ const MANAGER_NAV: Section[] = [
   },
   {
     label: 'Закупки',
-    items: [{ label: 'Приёмка', to: '/docs/supply' }],
+    items: [
+      { label: 'Поставщики и каталоги', to: '/market' },
+      { label: 'Мои заказы', to: '/orders' },
+      { label: 'Приёмка', to: '/docs/supply' },
+    ],
   },
   {
     label: 'Товары',
@@ -64,6 +68,14 @@ const MANAGER_NAV: Section[] = [
   },
 ];
 
+const SUPPLIER_NAV: Section[] = [
+  { label: 'Главная', to: '/' },
+  { label: 'Заказы', to: '/orders' },
+  { label: 'Каталог', to: '/catalog' },
+  { label: 'Сотрудники', to: '/users' },
+  { label: 'Профиль компании', to: '/company' },
+];
+
 const CASHIER_NAV: Section[] = [
   { label: 'Чеки', to: '/sales' },
   { label: 'Возвраты', to: '/returns' },
@@ -85,7 +97,8 @@ export function Layout() {
     return () => window.removeEventListener('mousedown', close);
   }, []);
 
-  const nav = canManage ? MANAGER_NAV : CASHIER_NAV;
+  const isSupplier = org?.kind === 'supplier';
+  const nav = isSupplier ? SUPPLIER_NAV : canManage ? MANAGER_NAV : CASHIER_NAV;
   const name = (user?.user_metadata?.full_name as string) || user?.email || '';
 
   return (
@@ -120,11 +133,13 @@ export function Layout() {
           ),
         )}
         <span className="spacer" />
-        <button className="btn primary" onClick={() => navigate('/pos')}>
-          <Icon name="cart" size={16} />
-          Касса
-        </button>
-        {stores.length > 1 && (
+        {!isSupplier && (
+          <button className="btn primary" onClick={() => navigate('/pos')}>
+            <Icon name="cart" size={16} />
+            Касса
+          </button>
+        )}
+        {!isSupplier && stores.length > 1 && (
           <select value={store?.id ?? ''} onChange={(e) => setStoreId(e.target.value)} aria-label="Торговая точка">
             {stores.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
           </select>
@@ -138,7 +153,7 @@ export function Layout() {
             <div className="nav-menu" style={{ left: 'auto', right: 0 }}>
               <div style={{ padding: '6px 10px 8px' }}>
                 <div><b>{org?.name}</b></div>
-                <div className="muted">{store?.name} · {role ? ROLE_LABEL[role] : ''}</div>
+                <div className="muted">{isSupplier ? 'Поставщик' : store?.name} · {role ? ROLE_LABEL[role] : ''}</div>
                 <div className="muted">{user?.email}</div>
               </div>
               {memberships.length > 1 &&
@@ -146,6 +161,7 @@ export function Layout() {
                   <button key={m.org.id} className="menu-item" onClick={() => setOrgId(m.org.id)}>
                     <Icon name="swap" size={16} />
                     {m.org.name}
+                    <span className="muted">{m.org.kind === 'supplier' ? 'поставщик' : 'магазин'}</span>
                   </button>
                 ))}
               <button className="menu-item" onClick={signOut}>

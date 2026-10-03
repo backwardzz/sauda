@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { dateOnly } from '../../lib/format';
 import { useQuery } from '../../lib/hooks';
-import { useWorkspace } from '../../lib/session';
+import { useOrg } from '../../lib/session';
 import { db, q } from '../../lib/supabase';
 import { ROLE_LABEL, type Role } from '../../lib/types';
 import { DataTable, type Column } from '../../ui/DataTable';
@@ -30,9 +30,19 @@ const ROLE_HINT: Record<Role, string> = {
   cashier: 'Только касса и чеки',
 };
 
+const SUPPLIER_ROLE: Record<Role, { label: string; hint: string }> = {
+  owner: { label: 'Владелец', hint: 'Полный доступ, профиль компании и сотрудники' },
+  manager: { label: 'Менеджер', hint: 'Каталог, цены и заказы' },
+  cashier: { label: 'Торговый представитель', hint: 'Только заказы магазинов' },
+};
+
 export function Users() {
-  const { org, user, role } = useWorkspace();
+  const { org, user, role } = useOrg();
   const isOwner = role === 'owner';
+  // у поставщика те же три уровня доступа, но называются по-своему
+  const supplier = org.kind === 'supplier';
+  const label = (r: Role) => (supplier ? SUPPLIER_ROLE[r].label : ROLE_LABEL[r]);
+  const hint = (r: Role) => (supplier ? SUPPLIER_ROLE[r].hint : ROLE_HINT[r]);
   const [inviting, setInviting] = useState(false);
   const [email, setEmail] = useState('');
   const [inviteRole, setInviteRole] = useState<Role>('cashier');
@@ -91,10 +101,10 @@ export function Users() {
         isOwner && m.user_id !== user.id ? (
           <select value={m.role} disabled={busy} aria-label={`Должность: ${m.name}`}
             onChange={(e) => act(() => q(db.from('org_members').update({ role: e.target.value }).eq('org_id', org.id).eq('user_id', m.user_id)), 'Должность изменена')}>
-            {(Object.keys(ROLE_LABEL) as Role[]).map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
+            {(Object.keys(ROLE_LABEL) as Role[]).map((r) => <option key={r} value={r}>{label(r)}</option>)}
           </select>
         ) : (
-          ROLE_LABEL[m.role]
+          label(m.role)
         ),
     },
     { key: 'since', title: 'В компании с', render: (m) => dateOnly(m.created_at) },
@@ -109,7 +119,7 @@ export function Users() {
 
   const inviteColumns: Column<Invite>[] = [
     { key: 'email', title: 'Почта', fixed: true, value: (i) => i.email },
-    { key: 'role', title: 'Должность', value: (i) => ROLE_LABEL[i.role] },
+    { key: 'role', title: 'Должность', value: (i) => label(i.role) },
     { key: 'date', title: 'Приглашён', render: (i) => dateOnly(i.created_at) },
     {
       key: 'actions', title: '', fixed: true, width: '50px',
@@ -160,7 +170,7 @@ export function Users() {
             <label className="field">
               <span>Должность</span>
               <select value={inviteRole} onChange={(e) => setInviteRole(e.target.value as Role)}>
-                {(Object.keys(ROLE_LABEL) as Role[]).map((r) => <option key={r} value={r}>{ROLE_LABEL[r]} — {ROLE_HINT[r]}</option>)}
+                {(Object.keys(ROLE_LABEL) as Role[]).map((r) => <option key={r} value={r}>{label(r)} — {hint(r)}</option>)}
               </select>
             </label>
             <p className="hint">Письмо не отправляется автоматически: сотрудник сам регистрируется на сайте с этой почтой и сразу попадает в компанию.</p>

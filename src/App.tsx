@@ -25,6 +25,13 @@ import { Users } from './pages/manage/Users';
 import { Registers } from './pages/manage/Registers';
 import { Stores } from './pages/manage/Stores';
 import { Pos } from './pages/Pos';
+import { Market } from './pages/market/Market';
+import { MarketSupplier } from './pages/market/MarketSupplier';
+import { Orders } from './pages/market/Orders';
+import { OrderView } from './pages/market/OrderView';
+import { SupplierHome } from './pages/supplier/SupplierHome';
+import { SupplierCatalog } from './pages/supplier/SupplierCatalog';
+import { CompanyProfile } from './pages/supplier/CompanyProfile';
 
 export function App() {
   const { user, loading, org, canManage } = useSession();
@@ -44,6 +51,23 @@ export function App() {
   if (loading) return <div className="auth muted">Загрузка…</div>;
   if (!user) return <AuthPage />;
   if (!org) return <Onboarding />;
+
+  // Поставщик (завод, дистрибьютор, торговый представитель): каталог и заказы магазинов, без кассы и склада.
+  if (org.kind === 'supplier') {
+    return (
+      <Routes>
+        <Route element={<Layout />}>
+          <Route path="/" element={<SupplierHome />} />
+          <Route path="/orders" element={<Orders />} />
+          <Route path="/orders/:id" element={<OrderView />} />
+          <Route path="/catalog" element={<SupplierCatalog />} />
+          <Route path="/company" element={<CompanyProfile />} />
+          <Route path="/users" element={<Users />} />
+        </Route>
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    );
+  }
 
   // Кассиру доступна касса и чеки; справочники, склад и отчёты — владельцу и менеджеру.
   if (!canManage) {
@@ -70,6 +94,10 @@ export function App() {
         <Route path="/quick" element={<QuickProducts />} />
         <Route path="/stock" element={<Stock />} />
         <Route path="/invoice" element={<InvoiceImport />} />
+        <Route path="/market" element={<Market />} />
+        <Route path="/market/:id" element={<MarketSupplier />} />
+        <Route path="/orders" element={<Orders />} />
+        <Route path="/orders/:id" element={<OrderView />} />
         <Route path="/docs/:kind" element={<StockDocs />} />
         <Route path="/docs/:kind/:id" element={<StockDocEditor />} />
         <Route path="/sales" element={<Sales kind="sale" />} />

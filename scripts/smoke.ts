@@ -333,6 +333,65 @@ async function main() {
   const invTotals = await must(a.from('stock_docs').select('total').eq('kind', 'inventory'));
   eq('P&L: результат инвентаризаций', pnl2.inventory, invTotals.reduce((s: number, d: Row) => s + Number(d.total), 0));
 
+  console.log('Поставщики и заказы');
+  const { db: s } = await signUp('supplier');
+  const supOrg = await must(s.rpc('create_org', { p_name: 'Завод напитков', p_kind: 'supplier' }));
+  check('у поставщика нет магазинов и касс', (await must(s.from('stores').select('id'))).length === 0);
+  await must(s.from('orgs').update({ min_order: 5000 }).eq('id', supOrg));
+  await fails('магазин не может править каталог поставщика',
+    a.from('supplier_products').insert({ org_id: supOrg, name: 'Левый', barcode: '1' }), 'row-level security');
+  const imp2 = await must(s.rpc('import_supplier_products', {
+    p_org: supOrg,
+    p_rows: [
+      { name: 'Кола 1 л', barcode: '4870000000011', price: 350, category: 'Напитки', pack_qty: 6 },
+      { name: 'Новый лимонад', barcode: '4870000009991', price: 200, unit: 'шт' },
+      { name: 'Сок', barcode: '4870000009992', price: 400 },
+    ],
+  }));
+  check('каталог поставщика загружен', imp2.created === 3, imp2);
+  await fails('магазин не может импортировать в чужой каталог', a.rpc('import_supplier_products', { p_org: supOrg, p_rows: [] }), 'Нет доступа');
+  const catalog = await must(a.from('supplier_products').select('*').eq('org_id', supOrg));
+  check('магазин видит каталог поставщика', catalog.length === 3);
+  check('магазин видит поставщика на витрине', (await must(a.from('orgs').select('id').eq('kind', 'supplier').eq('id', supOrg))).length === 1);
+  check('поставщик не видит товары магазина', (await must(s.from('products').select('id'))).length === 0);
+  const sp = (barcode: string) => catalog.find((p: Row) => p.barcode === barcode).id;
+  await fails('заказ меньше минимальной суммы отклонён',
+    a.rpc('place_order', { p_store: store, p_supplier: supOrg, p_items: [{ product_id: sp('4870000009992'), qty: 1 }] }), 'Минимальная сумма');
+  await fails('кассир не может заказывать',
+    c.rpc('place_order', { p_store: store, p_supplier: supOrg, p_items: [{ product_id: sp('4870000000011'), qty: 100 }] }), 'Нет доступа');
+  const order = await must(a.rpc('place_order', {
+    p_store: store, p_supplier: supOrg, p_comment: 'Привезите до обеда',
+    p_items: [{ product_id: sp('4870000000011'), qty: 12 }, { product_id: sp('4870000009991'), qty: 10 }, { product_id: sp('4870000009992'), qty: 5 }],
+  }));
+  const seen = (await must(s.from('orders').select('*, order_items(*)').eq('id', order).single()));
+  eq('поставщик видит заказ и сумму', seen.total, 12 * 350 + 10 * 200 + 5 * 400);
+  check('чужой магазин заказа не видит', (await must(b.from('orders').select('id'))).length === 0);
+  await fails('чужой не может менять заказ', b.rpc('set_order_status', { p_order: order, p_status: 'canceled' }), 'Нет доступа');
+  await fails('магазин не может подтвердить за поставщика', a.rpc('set_order_status', { p_order: order, p_status: 'confirmed' }), 'Нет доступа');
+  await fails('неотгруженный заказ принять нельзя', a.rpc('receive_order', { p_order: order }), 'только отгруженный');
+  const juice = seen.order_items.find((i: Row) => i.barcode === '4870000009992');
+  await must(s.rpc('set_order_status', { p_order: order, p_status: 'confirmed', p_items: [{ item_id: juice.id, qty: 0 }], p_comment: 'Сока нет' }));
+  await fails('магазин не может отменить подтверждённый заказ', a.rpc('set_order_status', { p_order: order, p_status: 'canceled' }), 'нельзя отменить');
+  await must(s.rpc('set_order_status', { p_order: order, p_status: 'shipped' }));
+  await fails('поставщик не может принять за магазин', s.rpc('receive_order', { p_order: order }), 'Нет доступа');
+  const colaStock = await stockOf(cola.id);
+  const supplyDoc = await must(a.rpc('receive_order', { p_order: order }));
+  const supLines = await must(a.rpc('stock_doc_lines', { p_doc: supplyDoc }));
+  check('в черновике приёмки отгруженные товары без отменённого', supLines.length === 2 && supLines.some((l: Row) => l.product_id === cola.id && Number(l.qty) === 12 && Number(l.price) === 350), supLines);
+  check('недостающий товар создан в магазине', (await must(a.from('products').select('id').eq('barcode', '4870000009991'))).length === 1);
+  eq('до проведения остаток не меняется', await stockOf(cola.id), colaStock);
+  await must(a.rpc('post_stock_doc_draft', { p_doc: supplyDoc }));
+  eq('после проведения остаток вырос', await stockOf(cola.id), colaStock + 12);
+  const done = await must(a.from('orders').select('status, total, supply_doc').eq('id', order).single());
+  check('заказ принят и связан с приёмкой', done.status === 'received' && done.supply_doc === supplyDoc && Number(done.total) === 6200, done);
+  await fails('повторно принять нельзя', a.rpc('receive_order', { p_order: order }), 'только отгруженный');
+
+  // тестовые компании убираем: поставщик иначе остался бы на общей витрине
+  if (env.SUPABASE_SERVICE_ROLE_KEY) {
+    const admin = createClient(url, env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
+    for (const id of [orgA, orgB, supOrg]) await admin.from('orgs').delete().eq('id', id);
+  }
+
   console.log(failed ? `\nПровалено проверок: ${failed}` : '\nВсе проверки пройдены');
   process.exit(failed ? 1 : 0);
 }

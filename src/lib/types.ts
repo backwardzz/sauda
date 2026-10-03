@@ -13,6 +13,68 @@ export interface Org {
   name: string;
   currency: string;
   timezone: string;
+  /** Магазин ведёт учёт и кассу, поставщик — каталог и заказы магазинов. */
+  kind: 'store' | 'supplier';
+  description: string;
+  phone: string;
+  min_order: number;
+  delivery_note: string;
+}
+
+export interface SupplierProduct {
+  id: string;
+  org_id: string;
+  name: string;
+  barcode: string;
+  unit: Unit;
+  category: string;
+  price: number;
+  /** Кратность заказа: товар отпускается упаковками. */
+  pack_qty: number;
+  available: boolean;
+  archived: boolean;
+}
+
+export type OrderStatus = 'new' | 'confirmed' | 'shipped' | 'received' | 'canceled';
+
+export const ORDER_STATUS: Record<OrderStatus, { label: string; badge: string }> = {
+  new: { label: 'Новый', badge: 'accent' },
+  confirmed: { label: 'Подтверждён', badge: 'warn' },
+  shipped: { label: 'Отгружен', badge: 'warn' },
+  received: { label: 'Принят', badge: 'ok' },
+  canceled: { label: 'Отменён', badge: '' },
+};
+
+export interface OrderItem {
+  id: string;
+  order_id: string;
+  name: string;
+  barcode: string;
+  unit: string;
+  qty: number;
+  qty_shipped: number | null;
+  price: number;
+}
+
+export interface Order {
+  id: string;
+  number: number;
+  supplier_org: string;
+  store_org: string;
+  store_id: string;
+  status: OrderStatus;
+  supplier_name: string;
+  store_org_name: string;
+  store_name: string;
+  store_address: string;
+  comment: string;
+  supplier_comment: string;
+  total: number;
+  supply_doc: string | null;
+  created_at: string;
+  confirmed_at: string | null;
+  shipped_at: string | null;
+  received_at: string | null;
 }
 
 export interface Store {

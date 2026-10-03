@@ -149,7 +149,14 @@ export function useSession(): SessionState {
   return s;
 }
 
-/** Для страниц внутри кабинета: организация и магазин там всегда есть. */
+/** Для страниц, общих для магазина и поставщика: у поставщика торговых точек нет. */
+export function useOrg() {
+  const s = useSession();
+  if (!s.org || !s.user) throw new Error('Нет выбранной организации');
+  return { ...s, org: s.org, user: s.user };
+}
+
+/** Для страниц кабинета магазина: организация и магазин там всегда есть. */
 export function useWorkspace() {
   const s = useSession();
   if (!s.org || !s.store || !s.user) throw new Error('Нет выбранной организации');

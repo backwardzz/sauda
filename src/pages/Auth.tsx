@@ -40,7 +40,7 @@ export function AuthPage() {
       <form className="auth-card stack" onSubmit={submit}>
         <div>
           <div className="brand"><span className="brand-mark">S</span>Sauda</div>
-          <p className="muted">Учёт товаров, касса и отчёты для магазина</p>
+          <p className="muted">Учёт и касса для магазинов, каталог и заказы для поставщиков</p>
         </div>
         <div className="segmented">
           <button type="button" className={mode === 'login' ? 'active' : ''} onClick={() => setMode('login')}>Вход</button>

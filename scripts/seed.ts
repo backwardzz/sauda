@@ -18,6 +18,9 @@ if (!env.DEMO_EMAIL || !env.DEMO_PASSWORD || !env.SUPABASE_SERVICE_ROLE_KEY) {
 }
 
 const db = createClient(url, env.VITE_SUPABASE_ANON_KEY, { auth: { persistSession: false } });
+// второй демо-вход — торговый представитель: владеет компаниями-поставщиками. Пароль тот же, что у магазина.
+const REP_EMAIL = 'rep@sauda.test';
+const rep = createClient(url, env.VITE_SUPABASE_ANON_KEY, { auth: { persistSession: false } });
 const admin = createClient(url, env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -106,9 +109,11 @@ async function main() {
   const products: (P & { stock: number; initial: number; buy: number })[] = [];
   const postings: { product_id: string; qty: number; price: number }[] = [];
   let n = 1;
+  const contractorByName = new Map<string, string>();
   for (const [category, supplier, items] of CATALOG) {
     const cat = await must(db.from('categories').insert({ org_id: org, name: category, markup_pct: 30 }).select().single());
     const sup = await must(db.from('contractors').insert({ org_id: org, kind: 'supplier', name: supplier }).select().single());
+    contractorByName.set(supplier, sup.id);
     for (const [name, unit, buy, sell, stock, min] of items) {
       const p = await must(
         db.from('products').insert({
@@ -243,6 +248,63 @@ async function main() {
   const draft = await must(db.rpc('create_stock_doc', { p_store: store, p_kind: 'inventory', p_comment: 'Напитки, начали считать' }));
   for (const p of products.slice(0, 4)) await must(db.rpc('set_stock_doc_item', { p_doc: draft, p_product: p.id, p_qty: Math.max(p.stock - 1, 0) }));
 
+  // ── Поставщики на площадке: каталоги и заказы в разных статусах ──
+  if ((await rep.auth.signInWithPassword({ email: REP_EMAIL, password: env.DEMO_PASSWORD })).error) {
+    const up = await rep.auth.signUp({ email: REP_EMAIL, password: env.DEMO_PASSWORD, options: { data: { full_name: 'Данияр Торговый' } } });
+    if (up.error) throw up.error;
+  }
+  for (const m of await must(rep.from('org_members').select('org_id'))) await must(admin.from('orgs').delete().eq('id', m.org_id));
+
+  const SUPPLIERS: [contractor: string, profile: Record<string, unknown>, extra: [string, string, number, number, string][]][] = [
+    ['ТОО «Напитки Азии»', { description: 'Вода, соки, газировка и энергетики. Прямые поставки с завода.', phone: '+7 701 000 11 22', min_order: 15000, delivery_note: 'Доставка пн, ср, пт. Заказ до 17:00 накануне' },
+      [['Морс клюквенный 1 л', 'шт', 480, 6, 'Соки'], ['Вода газированная 0,5 л', 'шт', 95, 12, 'Вода'], ['Лимонад «Дюшес» 1,5 л', 'шт', 390, 6, 'Газировка']]],
+    ['ТОО «Молочный двор»', { description: 'Молоко, кефир, сметана, творог и сыр собственного производства.', phone: '+7 702 000 33 44', min_order: 10000, delivery_note: 'Привозим каждый день до 9:00' },
+      [['Йогурт питьевой клубника 290 г', 'шт', 310, 8, 'Йогурты'], ['Ряженка 4% 450 г', 'шт', 360, 6, 'Кисломолочные'], ['Айран 1 л', 'шт', 420, 6, 'Кисломолочные']]],
+    ['ТОО «Сладкий мир»', { description: 'Шоколад, печенье, конфеты и снеки от ведущих производителей.', phone: '+7 705 000 55 66', min_order: 20000, delivery_note: 'Доставка по вторникам и четвергам' },
+      [['Вафли шоколадные 200 г', 'шт', 340, 10, 'Печенье и вафли'], ['Мармелад жевательный 80 г', 'шт', 190, 20, 'Конфеты'], ['Батончик ореховый 45 г', 'шт', 150, 24, 'Шоколад']]],
+  ];
+  const supplierOrgs: { id: string; items: { id: string; barcode: string; price: number; pack_qty: number }[] }[] = [];
+  for (const [contractor, profile, extra] of SUPPLIERS) {
+    const supOrg = await must(rep.rpc('create_org', { p_name: contractor, p_kind: 'supplier' }));
+    await must(rep.from('orgs').update(profile).eq('id', supOrg));
+    const cid = contractorByName.get(contractor)!;
+    const category = CATALOG.find(([, sName]) => sName === contractor)![0];
+    await must(rep.rpc('import_supplier_products', {
+      p_org: supOrg,
+      p_rows: [
+        // те же штрихкоды, что в демо-магазине: магазин видит свои остатки рядом с ценой поставщика
+        ...products.filter((p) => p.supplier_id === cid).map((p) => ({ name: (p as unknown as { name: string }).name, barcode: (p as unknown as { barcode: string }).barcode, unit: p.unit, price: p.buy, category, pack_qty: p.unit === 'кг' ? 1 : 6 })),
+        ...extra.map(([name, unit, price, pack, cat]) => ({ name, barcode: barcode(n++, unit), unit, price, category: cat, pack_qty: pack })),
+      ],
+    }));
+    await must(admin.from('contractors').update({ partner_org_id: supOrg }).eq('id', cid));
+    supplierOrgs.push({ id: supOrg, items: await must(rep.from('supplier_products').select('id, barcode, price, pack_qty').eq('org_id', supOrg).order('name')) });
+  }
+
+  // заказы демо-магазина: принятый, отгруженный (можно принимать), подтверждённый и новый
+  const order = async (sup: number, picks: [number, number][], comment: string, daysAgo: number, to: 'new' | 'confirmed' | 'shipped' | 'received') => {
+    const cat = supplierOrgs[sup];
+    const id = await must(db.rpc('place_order', { p_store: store, p_supplier: cat.id, p_comment: comment, p_items: picks.map(([i, packs]) => ({ product_id: cat.items[i].id, qty: packs * Number(cat.items[i].pack_qty) })) }));
+    if (to !== 'new') await must(rep.rpc('set_order_status', { p_order: id, p_status: 'confirmed', p_comment: 'Привезём в ближайшую доставку' }));
+    if (to === 'shipped' || to === 'received') await must(rep.rpc('set_order_status', { p_order: id, p_status: 'shipped' }));
+    if (to === 'received') await must(db.rpc('post_stock_doc_draft', { p_doc: await must(db.rpc('receive_order', { p_order: id })) }));
+    const at = new Date(Date.now() - daysAgo * 86400_000).toISOString();
+    await must(admin.from('orders').update({ created_at: at, ...(to !== 'new' ? { confirmed_at: at } : {}) }).eq('id', id));
+  };
+  await order(1, [[0, 4], [1, 3], [3, 2], [5, 2]], 'Как обычно, к открытию', 5, 'received');
+  await order(0, [[0, 5], [1, 5], [2, 4], [4, 6], [7, 4]], 'Разгрузка со двора', 1, 'shipped');
+  await order(2, [[0, 6], [2, 4], [4, 5], [6, 3], [7, 2]], '', 1, 'confirmed');
+  await order(1, [[0, 6], [2, 4], [4, 3], [6, 2]], 'Нужно до пятницы', 0, 'new');
+
+  // один товар закончился у поставщика: в каталоге он виден, но заказать нельзя
+  await must(admin.from('supplier_products').update({ available: false }).eq('org_id', supplierOrgs[2].id).eq('name', 'Мармелад жевательный 80 г'));
+
+  // пара товаров на критическом остатке: на них видно «Заказать всё, что заканчивается»
+  for (const [name, min] of [['Сметана 20% 400 г', 12], ['Молоко 3,2% 1 л', 30], ['Вода питьевая 1,5 л', 200]] as const) {
+    await must(db.from('products').update({ min_stock: min }).eq('org_id', org).eq('name', name));
+  }
+
+  console.log(`Поставщики: ${SUPPLIERS.length} компании с каталогами и 4 заказа. Вход торгового представителя: ${REP_EMAIL}, пароль тот же`);
   console.log(`Готово: «Демо-магазин», товаров ${products.length + 1}, продажи за ${DAYS} дней. Вход: ${env.DEMO_EMAIL}, пароль в .env.local`);
 }
 
