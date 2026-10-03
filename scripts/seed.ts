@@ -22,6 +22,9 @@ const db = createClient(url, env.VITE_SUPABASE_ANON_KEY, { auth: { persistSessio
 const REP_EMAIL = 'rep@sauda.test';
 const rep = createClient(url, env.VITE_SUPABASE_ANON_KEY, { auth: { persistSession: false } });
 const admin = createClient(url, env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
+// служебный вход для разработки: на сайте логин «dev», пароль «admin1». Владелец всех демо-компаний.
+const DEV_EMAIL = 'dev@sauda.test';
+const DEV_PASSWORD = 'admin1';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function must(p: PromiseLike<{ data: any; error: { message: string } | null }>): Promise<any> {
@@ -74,6 +77,27 @@ function barcode(n: number, unit: string): string {
   return body + ((10 - (sum % 10)) % 10);
 }
 
+/** Создаёт вход dev / admin1 (если его нет) и делает его владельцем демо-магазина и демо-поставщиков. */
+async function addDevUser() {
+  const users = (await must(admin.auth.admin.listUsers({ perPage: 1000 }))).users as { id: string; email?: string }[];
+  let devId = users.find((u) => u.email === DEV_EMAIL)?.id;
+  if (!devId) {
+    const created = await must(admin.auth.admin.createUser({ email: DEV_EMAIL, password: DEV_PASSWORD, email_confirm: true, user_metadata: { full_name: 'Разработчик' } }));
+    devId = created.user.id as string;
+  } else {
+    await must(admin.auth.admin.updateUserById(devId, { password: DEV_PASSWORD }));
+  }
+  const ids = new Set<string>();
+  for (const client of [db, rep]) {
+    const { data } = await client.auth.getUser();
+    if (!data.user) continue;
+    for (const m of await must(admin.from('org_members').select('org_id').eq('user_id', data.user.id))) ids.add(m.org_id);
+  }
+  const rows = [...ids].map((org_id) => ({ org_id, user_id: devId, role: 'owner' }));
+  if (rows.length) await must(admin.from('org_members').upsert(rows, { onConflict: 'org_id,user_id' }));
+  console.log(`Вход для разработки: логин dev, пароль ${DEV_PASSWORD} (компаний: ${rows.length})`);
+}
+
 async function main() {
   const signIn = await db.auth.signInWithPassword({ email: env.DEMO_EMAIL, password: env.DEMO_PASSWORD });
   if (signIn.error) {
@@ -85,6 +109,7 @@ async function main() {
   const existing = memberships.filter((m: { orgs: { name: string } | null }) => m.orgs?.name === 'Демо-магазин');
   if (existing.length > 0) {
     if (!process.argv.includes('--fresh')) {
+      await addDevUser();
       console.log('Демо-магазин уже создан. Чтобы пересоздать его с нуля: npm run seed -- --fresh');
       return;
     }
@@ -304,6 +329,7 @@ async function main() {
     await must(db.from('products').update({ min_stock: min }).eq('org_id', org).eq('name', name));
   }
 
+  await addDevUser();
   console.log(`Поставщики: ${SUPPLIERS.length} компании с каталогами и 4 заказа. Вход торгового представителя: ${REP_EMAIL}, пароль тот же`);
   console.log(`Готово: «Демо-магазин», товаров ${products.length + 1}, продажи за ${DAYS} дней. Вход: ${env.DEMO_EMAIL}, пароль в .env.local`);
 }

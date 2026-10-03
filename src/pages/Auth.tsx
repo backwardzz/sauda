@@ -1,6 +1,9 @@
 import { useState, type FormEvent } from 'react';
 import { db, errorText } from '../lib/supabase';
 
+/** Короткий логин без «@» (например, dev) — вход в аккаунт <логин>@sauda.test, который создаёт сидер. */
+const loginEmail = (login: string) => (login.includes('@') ? login : `${login}@sauda.test`);
+
 export function AuthPage() {
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [name, setName] = useState('');
@@ -17,7 +20,7 @@ export function AuthPage() {
     setNotice(null);
     try {
       if (mode === 'login') {
-        const { error } = await db.auth.signInWithPassword({ email: email.trim(), password });
+        const { error } = await db.auth.signInWithPassword({ email: loginEmail(email.trim()), password });
         if (error) throw error;
       } else {
         const { data, error } = await db.auth.signUp({
@@ -53,8 +56,14 @@ export function AuthPage() {
           </label>
         )}
         <label className="field">
-          <span>Почта</span>
-          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoComplete="email" />
+          <span>{mode === 'login' ? 'Почта или логин' : 'Почта'}</span>
+          <input
+            type={mode === 'login' ? 'text' : 'email'}
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+            autoComplete={mode === 'login' ? 'username' : 'email'}
+          />
         </label>
         <label className="field">
           <span>Пароль</span>
