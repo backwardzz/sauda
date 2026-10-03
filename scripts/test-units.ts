@@ -3,6 +3,7 @@ import { grade } from '../src/lib/abc';
 import { generateBarcode } from '../src/lib/barcode';
 import { markupPct, marginPct, parseNum, round2, round3 } from '../src/lib/format';
 import { parseImport } from '../src/lib/importParse';
+import { decodeInvoice, encodeInvoice, invoiceUnit } from '../src/lib/invoice';
 import { periodRange } from '../src/ui/Period';
 
 let failed = 0;
@@ -86,6 +87,16 @@ eq('классы', ['a', 'b', 'c', 'd', 'e', 'f', 'g'].map((k) => abc.get(k)).jo
 eq('суммы с пробелами и валютой', parseImport([['Название', 'Штрихкод', 'Продажная цена'], ['X', '1', '1 658 409,00 тг']]).items[0].sale_price, 1658409);
 eq('единственный товар — A', grade([{ key: 'x', v: 5 }], (r) => r.v).get('x'), 'A');
 eq('без продаж — C', grade([{ key: 'x', v: 0 }], (r) => r.v).get('x'), 'C');
+
+console.log('Накладная из фото');
+const inv = { supplier: 'ТОО «Макси чай»', number: '15', date: '03.10.2026', items: [{ barcode: '4870204391510', name: 'Dizzy 0.33л', unit: 'шт', qty: 24, price: 417.5 }] };
+eq('накладная переживает кодирование в адрес', decodeInvoice(encodeInvoice(inv)), inv);
+eq('код годится для адреса', /^[\w-]+$/.test(encodeInvoice(inv)), true);
+eq('строки без штрихкода и количества отброшены', decodeInvoice(encodeInvoice({ ...inv, items: [...inv.items, { barcode: '', name: 'x', unit: '', qty: 1, price: 1 }, { barcode: '1', name: 'y', unit: '', qty: 0, price: 1 }] })).items.length, 1);
+let bad = false;
+try { decodeInvoice('%%%'); } catch { bad = true; }
+eq('повреждённая ссылка отклонена', bad, true);
+eq('единицы накладной', ['бут', 'кг.', 'Литр', 'пач', 'м'].map(invoiceUnit), ['шт', 'кг', 'л', 'шт', 'м']);
 
 console.log('Период');
 const range = periodRange({ from: '2026-10-01', to: '2026-10-03' });

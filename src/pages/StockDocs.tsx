@@ -12,6 +12,12 @@ import { Icon } from '../ui/Icon';
 import { lastDays, PeriodPicker, periodRange } from '../ui/Period';
 import { toast } from '../ui/toast';
 
+/** Приложение «Накладные в Sauda»: на GitHub Pages лежит рядом, при локальной разработке — на порту 5179. */
+function invoicesUrl(): string {
+  const local = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+  return local ? 'http://localhost:5179/' : new URL('../umag-ocr/', location.href.split('#')[0]).href;
+}
+
 export function StockDocs() {
   const { kind } = useParams();
   const navigate = useNavigate();
@@ -105,6 +111,11 @@ export function StockDocs() {
       </div>
       <div className="toolbar">
         <button className="btn primary" disabled={busy || needSecondStore} onClick={create}><Icon name="plus" size={16} />{meta.one}</button>
+        {kind === 'supply' && (
+          <a className="btn" href={invoicesUrl()} target="_blank" rel="noopener" title="Распознать фото накладной и создать из неё приёмку">
+            <Icon name="doc" size={16} />Из фото накладной
+          </a>
+        )}
         <PeriodPicker value={period} onChange={setPeriod} />
       </div>
       {needSecondStore && (

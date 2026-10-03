@@ -11,6 +11,7 @@ import { Stock } from './pages/Stock';
 import { QuickProducts } from './pages/QuickProducts';
 import { StockDocs } from './pages/StockDocs';
 import { StockDocEditor } from './pages/StockDocEditor';
+import { InvoiceImport } from './pages/InvoiceImport';
 import { Sales } from './pages/Sales';
 import { Canceled } from './pages/Canceled';
 import { SalesStats } from './pages/reports/SalesStats';
@@ -68,6 +69,7 @@ export function App() {
         <Route path="/products/:id" element={<ProductCard />} />
         <Route path="/quick" element={<QuickProducts />} />
         <Route path="/stock" element={<Stock />} />
+        <Route path="/invoice" element={<InvoiceImport />} />
         <Route path="/docs/:kind" element={<StockDocs />} />
         <Route path="/docs/:kind/:id" element={<StockDocEditor />} />
         <Route path="/sales" element={<Sales kind="sale" />} />
