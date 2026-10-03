@@ -1,0 +1,252 @@
+// Демо-данные для локальной базы: магазин с товарами, остатками и продажами за две недели.
+// Запуск: npm run seed. Логин и пароль демо-аккаунта лежат в .env.local (DEMO_EMAIL, DEMO_PASSWORD).
+import { createClient } from '@supabase/supabase-js';
+import { readFileSync } from 'node:fs';
+
+const env = Object.fromEntries(
+  readFileSync(new URL('../.env.local', import.meta.url), 'utf8')
+    .split(/\r?\n/)
+    .filter((l) => /^[A-Z_]+=/.test(l))
+    .map((l) => [l.slice(0, l.indexOf('=')), l.slice(l.indexOf('=') + 1)]),
+);
+const url = env.VITE_SUPABASE_URL;
+if (!/^https?:\/\/(127\.0\.0\.1|localhost)[:/]/.test(url)) {
+  throw new Error(`Сидер пишет демо-данные и запускается только на локальной базе, а в .env.local указано ${url}`);
+}
+if (!env.DEMO_EMAIL || !env.DEMO_PASSWORD || !env.SUPABASE_SERVICE_ROLE_KEY) {
+  throw new Error('В .env.local нужны DEMO_EMAIL, DEMO_PASSWORD и SUPABASE_SERVICE_ROLE_KEY');
+}
+
+const db = createClient(url, env.VITE_SUPABASE_ANON_KEY, { auth: { persistSession: false } });
+const admin = createClient(url, env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function must(p: PromiseLike<{ data: any; error: { message: string } | null }>): Promise<any> {
+  const { data, error } = await p;
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+// детерминированный генератор: демо выглядит одинаково при каждом запуске
+let state = 20261003;
+const rnd = () => {
+  state = (state * 1664525 + 1013904223) % 4294967296;
+  return state / 4294967296;
+};
+const int = (a: number, b: number) => a + Math.floor(rnd() * (b - a + 1));
+const pick = <T,>(list: T[]) => list[int(0, list.length - 1)];
+
+const CATALOG: [category: string, supplier: string, items: [name: string, unit: string, buy: number, sell: number, qty: number, min?: number][]][] = [
+  ['Напитки', 'ТОО «Напитки Азии»', [
+    ['Вода питьевая 0,5 л', 'шт', 90, 150, 240, 30], ['Вода питьевая 1,5 л', 'шт', 160, 250, 180, 24], ['Холодный чай лимон 1 л', 'шт', 500, 750, 96, 12],
+    ['Газировка кола 1 л', 'шт', 540, 710, 120, 12], ['Газировка кола 0,5 л', 'шт', 330, 450, 144], ['Сок яблочный 1 л', 'шт', 520, 720, 60, 10],
+    ['Энергетик 0,45 л', 'шт', 455, 600, 72, 12], ['Квас 1,5 л', 'шт', 420, 590, 36],
+  ]],
+  ['Выпечка', 'ИП Пекарня', [
+    ['Хлеб пшеничный', 'шт', 120, 140, 40, 15], ['Батон нарезной', 'шт', 230, 255, 30, 10], ['Лепёшка тандырная', 'шт', 140, 170, 35, 10],
+    ['Булочка с маком', 'шт', 110, 200, 24], ['Самса с мясом', 'шт', 250, 400, 20],
+  ]],
+  ['Молочные продукты', 'ТОО «Молочный двор»', [
+    ['Молоко 3,2% 1 л', 'шт', 430, 560, 48, 12], ['Кефир 2,5% 1 л', 'шт', 410, 540, 36, 10], ['Сметана 20% 400 г', 'шт', 620, 790, 24],
+    ['Творог 9% 500 г', 'шт', 890, 1150, 18, 6], ['Масло сливочное 180 г', 'шт', 1250, 1590, 20, 5], ['Сыр твёрдый', 'кг', 3900, 5200, 12],
+  ]],
+  ['Снеки и сладости', 'ТОО «Сладкий мир»', [
+    ['Чипсы картофельные 80 г', 'шт', 390, 540, 80, 15], ['Шоколад молочный 90 г', 'шт', 480, 690, 70, 10], ['Печенье овсяное 300 г', 'шт', 520, 720, 40],
+    ['Жвачка мятная', 'шт', 160, 250, 150], ['Конфеты шоколадные', 'кг', 2600, 3600, 15, 3], ['Семечки жареные 100 г', 'шт', 210, 320, 60],
+  ]],
+  ['Овощи и фрукты', 'КХ «Жетысу»', [
+    ['Картофель', 'кг', 150, 200, 300, 40], ['Лук репчатый', 'кг', 120, 180, 120, 20], ['Морковь', 'кг', 160, 240, 80], ['Яблоки', 'кг', 500, 800, 60, 10],
+    ['Бананы', 'кг', 720, 990, 45, 10], ['Помидоры', 'кг', 650, 950, 30],
+  ]],
+  ['Хозтовары', 'ТОО «Быт-Опт»', [
+    ['Туалетная бумага', 'шт', 56, 100, 200, 30], ['Спички', 'шт', 9, 20, 300], ['Пакет-майка', 'шт', 8, 20, 500, 100], ['Губки для посуды 5 шт', 'шт', 240, 390, 40],
+    ['Средство для посуды 500 мл', 'шт', 650, 890, 3, 5],
+  ]],
+];
+
+function barcode(n: number, unit: string): string {
+  const body = unit === 'кг' ? `21${String(n).padStart(5, '0')}00000` : `487${String(100000000 + n).slice(1)}0`.padEnd(12, '0').slice(0, 12);
+  let sum = 0;
+  for (let i = 0; i < 12; i++) sum += Number(body[i]) * (i % 2 === 0 ? 1 : 3);
+  return body + ((10 - (sum % 10)) % 10);
+}
+
+async function main() {
+  const signIn = await db.auth.signInWithPassword({ email: env.DEMO_EMAIL, password: env.DEMO_PASSWORD });
+  if (signIn.error) {
+    const signUp = await db.auth.signUp({ email: env.DEMO_EMAIL, password: env.DEMO_PASSWORD, options: { data: { full_name: 'Айгерим Демо' } } });
+    if (signUp.error) throw signUp.error;
+  }
+  // сидер владеет только демо-магазином: другие компании аккаунта (например, с настоящей базой товаров) не трогает
+  const memberships = await must(db.from('org_members').select('org_id, orgs(name)'));
+  const existing = memberships.filter((m: { orgs: { name: string } | null }) => m.orgs?.name === 'Демо-магазин');
+  if (existing.length > 0) {
+    if (!process.argv.includes('--fresh')) {
+      console.log('Демо-магазин уже создан. Чтобы пересоздать его с нуля: npm run seed -- --fresh');
+      return;
+    }
+    // пользователь остаётся прежним, поэтому открытая в браузере сессия не слетает
+    for (const m of existing) await must(admin.from('orgs').delete().eq('id', m.org_id));
+  }
+
+  const org = await must(db.rpc('create_org', { p_name: 'Демо-магазин', p_store: 'Магазин на Абая' }));
+  const store = (await must(db.from('stores').select('id').eq('org_id', org)))[0].id;
+  await must(db.from('stores').update({ address: 'г. Алматы, пр. Абая, 10' }).eq('id', store));
+  const register = (await must(db.from('registers').select('id').eq('org_id', org)))[0].id;
+  const warehouse = (await must(db.from('stores').insert({ org_id: org, name: 'Склад на Толе би', address: 'г. Алматы, ул. Толе би, 120' }).select().single())).id;
+  /** Документ проведён «сейчас»: переносим его на нужный день и час демо-периода. */
+  const backdate = async (doc: string, day: Date, hour: number) => {
+    const at = new Date(day);
+    at.setHours(hour, 15, 0, 0);
+    await must(admin.from('stock_docs').update({ created_at: at.toISOString() }).eq('id', doc));
+    await must(admin.from('doc_payments').update({ created_at: at.toISOString() }).eq('doc_id', doc));
+  };
+
+  type P = { id: string; unit: string; sale_price: number; wholesale_price: number; supplier_id: string };
+  const products: (P & { stock: number; initial: number; buy: number })[] = [];
+  const postings: { product_id: string; qty: number; price: number }[] = [];
+  let n = 1;
+  for (const [category, supplier, items] of CATALOG) {
+    const cat = await must(db.from('categories').insert({ org_id: org, name: category, markup_pct: 30 }).select().single());
+    const sup = await must(db.from('contractors').insert({ org_id: org, kind: 'supplier', name: supplier }).select().single());
+    for (const [name, unit, buy, sell, stock, min] of items) {
+      const p = await must(
+        db.from('products').insert({
+          org_id: org, name, unit, barcode: barcode(n++, unit), category_id: cat.id, supplier_id: sup.id,
+          purchase_price: buy, sale_price: sell, wholesale_price: unit === 'шт' && sell >= 500 ? Math.round(sell * 0.93) : 0, min_stock: min ?? null,
+        }).select().single(),
+      );
+      products.push({ ...p, stock, initial: stock, buy });
+      postings.push({ product_id: p.id, qty: stock, price: buy });
+    }
+  }
+  await must(db.from('products').insert({ org_id: org, kind: 'service', name: 'Доставка по району', barcode: barcode(n++, 'шт'), sale_price: 500 }));
+
+  for (const [i, name] of ['Выпечка', 'Овощи и фрукты', 'На развес'].entries()) {
+    const g = await must(db.from('quick_groups').insert({ org_id: org, name, sort: i }).select().single());
+    const cats = name === 'На развес' ? ['Сыр твёрдый', 'Конфеты шоколадные'] : null;
+    const list = await must(db.from('products').select('id, name, categories(name)').eq('org_id', org));
+    const ids = list
+      .filter((p: { name: string; categories: { name: string } | null }) => (cats ? cats.includes(p.name) : p.categories?.name === name))
+      .map((p: { id: string }) => p.id);
+    await must(db.from('products').update({ quick_group_id: g.id }).in('id', ids));
+  }
+
+  const customers = [];
+  for (const name of ['Кафе «Достар»', 'Школа № 12', 'Ержан (сосед)']) {
+    customers.push((await must(db.from('contractors').insert({ org_id: org, kind: 'customer', name }).select().single())).id);
+  }
+
+  await must(db.rpc('post_stock_doc', { p_store: store, p_kind: 'posting', p_comment: 'Начальные остатки', p_items: postings }));
+  await must(db.rpc('post_stock_doc', {
+    p_store: store, p_kind: 'writeoff', p_comment: 'Истёк срок годности',
+    p_items: [{ product_id: products[13].id, qty: 3 }, { product_id: products[16].id, qty: 2 }],
+  }));
+  products[13].stock -= 3;
+  products[16].stock -= 2;
+
+  const DAYS = 14;
+  for (let d = DAYS - 1; d >= 0; d--) {
+    const day = new Date();
+    day.setDate(day.getDate() - d);
+    if (d === 6) {
+      // поставки в середине периода: по приёмке на поставщика, остатки возвращаются к начальным
+      const low = products.filter((p) => p.stock < p.initial * 0.6);
+      const bySupplier = new Map<string, typeof low>();
+      for (const p of low) bySupplier.set(p.supplier_id, [...(bySupplier.get(p.supplier_id) ?? []), p]);
+      let i = 0;
+      for (const [supplier, list] of bySupplier) {
+        const doc = await must(db.rpc('post_stock_doc', {
+          p_store: store, p_kind: 'supply', p_comment: `Накладная № ${int(100, 999)}`, p_supplier: supplier,
+          p_items: list.map((p) => ({ product_id: p.id, qty: Math.round((p.initial - p.stock) * 1000) / 1000, price: p.buy })),
+        }));
+        const total = Number((await must(db.from('stock_docs').select('total').eq('id', doc).single())).total);
+        // первая приёмка оплачена целиком, вторая наполовину, остальные ждут оплаты
+        if (i === 0) await must(db.rpc('pay_supply', { p_doc: doc, p_amount: total, p_comment: 'Наличными при получении' }));
+        if (i === 1) await must(db.rpc('pay_supply', { p_doc: doc, p_amount: Math.round(total / 2), p_comment: 'Аванс' }));
+        await backdate(doc, day, 8);
+        for (const p of list) p.stock = p.initial;
+        i++;
+      }
+    }
+    if (d === 3) {
+      const moved = products.filter((p) => p.unit === 'шт' && p.stock > 60).slice(0, 5);
+      const doc = await must(db.rpc('post_stock_doc', {
+        p_store: store, p_kind: 'transfer', p_comment: 'Запас на склад', p_to_store: warehouse,
+        p_items: moved.map((p) => ({ product_id: p.id, qty: 20 })),
+      }));
+      await backdate(doc, day, 8);
+      for (const p of moved) p.stock -= 20;
+    }
+    if (d === 1) {
+      // выборочная инвентаризация: у пары товаров недостача, у одного излишек
+      const counted = products.filter((p) => p.unit === 'шт' && p.stock > 10).slice(5, 11);
+      const diffs = [-2, 0, -1, 0, 3, 0];
+      const doc = await must(db.rpc('post_stock_doc', {
+        p_store: store, p_kind: 'inventory', p_comment: 'Выборочная проверка',
+        p_items: counted.map((p, k) => ({ product_id: p.id, qty: p.stock + diffs[k] })),
+      }));
+      await backdate(doc, day, 8);
+      counted.forEach((p, k) => (p.stock += diffs[k]));
+    }
+    const shift = await must(db.rpc('open_shift', { p_register: register, p_opening_cash: 10000 }));
+    const sales = d === 0 ? 6 : int(9, 18);
+    const made: string[] = [];
+    for (let s = 0; s < sales; s++) {
+      const basket = new Map<string, { product_id: string; qty: number; price: number; discount?: number }>();
+      for (let k = int(1, 5); k > 0; k--) {
+        const p = pick(products);
+        const qty = p.unit === 'кг' ? int(3, 25) / 10 : int(1, 3);
+        // не продаём больше, чем есть: остатки в демо не уходят в минус
+        if (p.stock < qty || basket.has(p.id)) continue;
+        p.stock -= qty;
+        const wholesale = Number(p.wholesale_price) > 0 && rnd() < 0.08;
+        const price = wholesale ? Number(p.wholesale_price) : Number(p.sale_price);
+        basket.set(p.id, { product_id: p.id, qty, price, discount: rnd() < 0.07 ? Math.round(price * qty * 0.1) : 0 });
+      }
+      const items = [...basket.values()];
+      if (!items.length) continue;
+      const total = items.reduce((a, i) => a + Math.round(i.price * i.qty * 100) / 100 - (i.discount ?? 0), 0);
+      const mode = rnd();
+      const res = await must(db.rpc('create_sale', {
+        p_shift: shift, p_items: items,
+        p_paid_card: mode < 0.45 ? Math.round(total * 100) / 100 : mode < 0.5 ? Math.floor(total / 2) : 0,
+        p_customer: rnd() < 0.12 ? pick(customers) : null,
+      }));
+      made.push(res.id);
+    }
+    if (d > 0 && d % 4 === 0) {
+      const sale = await must(db.from('sales').select('id, sale_items(id, qty)').eq('id', made[0]).single());
+      await must(db.rpc('create_return', { p_shift: shift, p_sale: sale.id, p_items: [{ item_id: sale.sale_items[0].id, qty: sale.sale_items[0].qty }] }));
+    }
+    if (d > 0) {
+      await must(db.rpc('cash_op', { p_shift: shift, p_kind: 'out', p_amount: 5000, p_comment: 'Инкассация' }));
+      const expected = await must(db.rpc('close_shift', { p_shift: shift, p_closing_cash: null }));
+      if (d === 5) await must(admin.from('shifts').update({ closing_cash: expected - 350 }).eq('id', shift));
+    }
+
+    // продажи созданы «сейчас»: разносим их по рабочему дню d дней назад
+    const all = await must(admin.from('sales').select('id').eq('shift_id', shift).order('number'));
+    const open = new Date(day);
+    open.setHours(9, 0, 0, 0);
+    const hours = d === 0 ? Math.max((Date.now() - open.getTime()) / 3600_000 - 0.2, 0.5) : 12;
+    for (const [i, s] of all.entries()) {
+      const at = new Date(open.getTime() + ((i + 0.5) / all.length) * hours * 3600_000);
+      await must(admin.from('sales').update({ created_at: at.toISOString() }).eq('id', s.id));
+    }
+    const patch: Record<string, string> = { opened_at: (d === 0 && open.getTime() > Date.now() ? new Date(Date.now() - 3600_000) : open).toISOString() };
+    if (d > 0) patch.closed_at = new Date(open.getTime() + 12.5 * 3600_000).toISOString();
+    await must(admin.from('shifts').update(patch).eq('id', shift));
+  }
+
+  // незаконченная инвентаризация: показывает, как выглядит черновик
+  const draft = await must(db.rpc('create_stock_doc', { p_store: store, p_kind: 'inventory', p_comment: 'Напитки, начали считать' }));
+  for (const p of products.slice(0, 4)) await must(db.rpc('set_stock_doc_item', { p_doc: draft, p_product: p.id, p_qty: Math.max(p.stock - 1, 0) }));
+
+  console.log(`Готово: «Демо-магазин», товаров ${products.length + 1}, продажи за ${DAYS} дней. Вход: ${env.DEMO_EMAIL}, пароль в .env.local`);
+}
+
+main().catch((e) => {
+  console.error('Сидер прерван:', e.message);
+  process.exit(1);
+});

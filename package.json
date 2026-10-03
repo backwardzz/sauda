@@ -1,0 +1,36 @@
+{
+  "name": "sauda",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Учёт товаров, касса и отчёты для розничных магазинов",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "db:start": "supabase start -x realtime,storage-api,imgproxy,edge-runtime,logflare,vector,supavisor",
+    "db:stop": "supabase stop",
+    "db:reset": "supabase db reset",
+    "test": "tsx scripts/test-units.ts && tsx scripts/smoke.ts",
+    "test:units": "tsx scripts/test-units.ts",
+    "seed": "tsx scripts/seed.ts",
+    "import": "tsx scripts/import-catalog.ts"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.28.0",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.7.0",
+    "supabase": "^2.40.0",
+    "tsx": "^4.16.0",
+    "typescript": "^5.5.3",
+    "vite": "^6.4.3"
+  }
+}
