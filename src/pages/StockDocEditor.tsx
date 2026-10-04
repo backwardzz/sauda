@@ -383,7 +383,7 @@ export function StockDocEditor() {
                             })}
                       </td>
                     )}
-                    {validKind === 'supply' && <td className="right">{markupPct(price, Number(sale))}</td>}
+                    {validKind === 'supply' && <td className="right">{Number(sale) > 0 ? markupPct(price, Number(sale)) : <span className="muted">нет цены</span>}</td>}
                     <td className={`right ${isInv && sum < 0 ? 'error-text' : isInv && sum > 0 ? 'ok-text' : ''}`}>{money(sum)}</td>
                     {!posted && (
                       <td>

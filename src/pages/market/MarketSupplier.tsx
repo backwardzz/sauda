@@ -116,7 +116,7 @@ export function MarketSupplier() {
         <label className="check-row"><input type="checkbox" checked={onlyLow} onChange={(e) => setOnlyLow(e.target.checked)} />Заканчивается у меня{lowCount ? ` · ${lowCount}` : ''}</label>
         <label className="check-row"><input type="checkbox" checked={onlyCart} onChange={(e) => setOnlyCart(e.target.checked)} />В корзине</label>
         <span className="spacer" />
-        <button className="btn" disabled={!lowCount} onClick={addLow} title="Добавить в корзину всё, что в магазине на критическом остатке">
+        <button className="btn" disabled={!lowCount} onClick={addLow}>
           <Icon name="bolt" size={16} />Заказать всё, что заканчивается
         </button>
       </div>
