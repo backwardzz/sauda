@@ -220,6 +220,7 @@ export function Products() {
           </button>
           {menu === 'io' && (
             <div className="popover right">
+              <button className="menu-item" onClick={() => navigate('/catalog')}><Icon name="layers" size={16} />Из каталога товаров</button>
               <button className="menu-item" onClick={() => { setMenu(null); setImportOpen(true); }}><Icon name="upload" size={16} />Импорт из Excel</button>
               <button className="menu-item" onClick={exportAll}><Icon name="download" size={16} />Экспорт товаров</button>
             </div>
@@ -299,7 +300,7 @@ export function Products() {
             rowKey={(p) => p.id}
             loading={list.loading}
             error={list.error}
-            empty={term || activeFilters.length || category !== 'all' ? 'Ничего не найдено' : 'Товаров пока нет. Добавьте первый или загрузите список из Excel.'}
+            empty={term || activeFilters.length || category !== 'all' ? 'Ничего не найдено' : 'Товаров пока нет. Добавьте первый, выберите из каталога товаров или загрузите список из Excel.'}
             sort={sort}
             onSort={setSort}
             selected={selected}

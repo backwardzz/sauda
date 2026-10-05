@@ -6,6 +6,8 @@ import { useSession } from '../lib/session';
 export function Onboarding() {
   const { user, reload, signOut } = useSession();
   const [kind, setKind] = useState<'store' | 'supplier'>('store');
+  const [business, setBusiness] = useState<'grocery' | 'pharmacy'>('grocery');
+  const [fresh, setFresh] = useState(true);
   const [company, setCompany] = useState('');
   const [storeName, setStoreName] = useState('');
   const [busy, setBusy] = useState(false);
@@ -16,7 +18,9 @@ export function Onboarding() {
     setBusy(true);
     setError(null);
     try {
-      await q(db.rpc('create_org', { p_name: company, p_store: storeName || company, p_kind: kind }));
+      await q(db.rpc('create_org', { p_name: company, p_store: storeName || company, p_kind: kind, p_business: business }));
+      // новому магазину сразу предлагаются пакеты ходовых товаров
+      if (kind === 'store' && business === 'grocery' && fresh) window.location.hash = '#/catalog/starter';
       await reload();
     } catch (err) {
       setError(errorText(err));
@@ -43,15 +47,40 @@ export function Onboarding() {
             <span>Завод, дистрибьютор, торговый представитель: каталог и заказы магазинов</span>
           </button>
         </div>
+        {kind === 'store' && (
+          <div className="field">
+            <span>Чем торгуете</span>
+            <div className="choice small">
+              <button type="button" className={business === 'grocery' ? 'active' : ''} onClick={() => setBusiness('grocery')}>
+                <b>Продукты и товары для дома</b>
+              </button>
+              <button type="button" className={business === 'pharmacy' ? 'active' : ''} onClick={() => setBusiness('pharmacy')}>
+                <b>Аптека <span className="badge warn">скоро</span></b>
+              </button>
+            </div>
+            {business === 'pharmacy' && (
+              <p className="hint">
+                Раздел для аптек в разработке: справочника лекарств, учёта серий и сроков годности пока нет.
+                Зарегистрироваться можно уже сейчас — будут доступны обычный учёт товаров, касса и отчёты.
+              </p>
+            )}
+          </div>
+        )}
         <label className="field">
           <span>Название компании</span>
           <input value={company} onChange={(e) => setCompany(e.target.value)} required autoFocus
-            placeholder={kind === 'store' ? 'ИП Иванов' : 'ТОО «Молочный завод»'} />
+            placeholder={kind === 'supplier' ? 'ТОО «Молочный завод»' : business === 'pharmacy' ? 'ТОО «Аптека Здоровье»' : 'ИП Иванов'} />
         </label>
         {kind === 'store' && (
           <label className="field">
-            <span>Название первого магазина</span>
-            <input value={storeName} onChange={(e) => setStoreName(e.target.value)} placeholder="Магазин на Абая" />
+            <span>{business === 'pharmacy' ? 'Название первой аптеки' : 'Название первого магазина'}</span>
+            <input value={storeName} onChange={(e) => setStoreName(e.target.value)} placeholder={business === 'pharmacy' ? 'Аптека на Абая' : 'Магазин на Абая'} />
+          </label>
+        )}
+        {kind === 'store' && business === 'grocery' && (
+          <label className="check-row">
+            <input type="checkbox" checked={fresh} onChange={(e) => setFresh(e.target.checked)} />
+            <span>У меня новый магазин — предложить пакет ходовых товаров</span>
           </label>
         )}
         {error && <p className="error-text">{error}</p>}

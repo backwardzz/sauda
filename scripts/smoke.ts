@@ -386,10 +386,56 @@ async function main() {
   check('заказ принят и связан с приёмкой', done.status === 'received' && done.supply_doc === supplyDoc && Number(done.total) === 6200, done);
   await fails('повторно принять нельзя', a.rpc('receive_order', { p_order: order }), 'только отгруженный');
 
-  // тестовые компании убираем: поставщик иначе остался бы на общей витрине
+  // справочник наполняется только под служебным ключом, тестовые компании убираются им же
   if (env.SUPABASE_SERVICE_ROLE_KEY) {
     const admin = createClient(url, env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
-    for (const id of [orgA, orgB, supOrg]) await admin.from('orgs').delete().eq('id', id);
+
+    console.log('Каталог товаров');
+    const mark = `Смоук ${randomBytes(3).toString('hex')}`;
+    const code = () => `09${String(Math.floor(Math.random() * 1e11)).padStart(11, '0')}`;
+    const [codeNew, codeSub] = [code(), code()];
+    await must(admin.from('catalog_products').delete().eq('barcode', cola.barcode));
+    // у всех строк один набор полей: при пакетной вставке пропущенное поле стало бы null
+    const item = (name: string, barcode: string, category = '', subcategory = '', starter_pack = '', business = 'grocery') =>
+      ({ name: `${mark} ${name}`, barcode, category, subcategory, starter_pack, business });
+    await must(admin.from('catalog_products').insert([
+      item('кола', cola.barcode, 'Напитки', '', 'drinks'),
+      item('чай', codeNew, `${mark} бакалея`, 'Чай', 'tea'),
+      item('кофе', codeSub, `${mark} бакалея`, 'Кофе'),
+      item('аспирин', code(), '', '', '', 'pharmacy'),
+    ]));
+    await fails('пользователь не может править справочник', a.from('catalog_products').insert({ name: 'x', barcode: code() }).select(), 'row-level security');
+    const found = await must(a.rpc('catalog_search', { p_org: orgA, p_term: mark }));
+    check('поиск по справочнику: товары своего типа магазина', found.length === 3 && Number(found[0].total) === 3, found);
+    check('товар с тем же штрихкодом помечен «уже у вас»', found.find((r: Row) => r.barcode === cola.barcode)?.mine === true);
+    const onlyNew = await must(a.rpc('catalog_search', { p_org: orgA, p_term: mark, p_only_new: true }));
+    check('фильтр «скрыть те, что уже есть»', onlyNew.length === 2 && onlyNew.every((r: Row) => !r.mine), onlyNew);
+    const bySub = await must(a.rpc('catalog_search', { p_org: orgA, p_category: `${mark} бакалея`, p_subcategory: 'Чай' }));
+    check('отбор по подкатегории', bySub.length === 1 && bySub[0].barcode === codeNew, bySub);
+    const cats = await must(a.rpc('catalog_categories', { p_org: orgA }));
+    check('категории справочника со счётчиками', cats.filter((c: Row) => c.category === `${mark} бакалея`).length === 2, cats.length);
+    const starter = await must(a.rpc('starter_products', { p_org: orgA }));
+    check('пакеты для нового магазина', starter.some((r: Row) => r.barcode === codeNew && r.starter_pack === 'tea' && !r.mine));
+
+    await fails('чужая компания не может добавить товары', b.rpc('add_catalog_products', { p_org: orgA, p_ids: found.map((r: Row) => r.id) }), 'Нет доступа');
+    await fails('поставщику справочник недоступен', s.rpc('add_catalog_products', { p_org: supOrg, p_ids: [] }), 'только магазинам');
+    const added = await must(a.rpc('add_catalog_products', { p_org: orgA, p_ids: found.map((r: Row) => r.id) }));
+    check('добавлены только новые товары', added.created === 2 && added.skipped === 1, added);
+    const tea = await must(a.from('products').select('name, purchase_price, sale_price, categories(name, parent_id)').eq('barcode', codeNew).single());
+    check('товар создан без цен, с подкатегорией', Number(tea.sale_price) === 0 && tea.categories?.name === 'Чай' && !!tea.categories?.parent_id, tea);
+    const again = await must(a.rpc('add_catalog_products', { p_org: orgA, p_ids: found.map((r: Row) => r.id) }));
+    check('повторное добавление ничего не дублирует', again.created === 0 && again.skipped === 3, again);
+
+    const { db: ph } = await signUp('pharmacy');
+    const phOrg = await must(ph.rpc('create_org', { p_name: 'Аптека', p_business: 'pharmacy' }));
+    check('аптека запоминает тип', (await must(ph.from('orgs').select('business').eq('id', phOrg).single())).business === 'pharmacy');
+    const phFound = await must(ph.rpc('catalog_search', { p_org: phOrg, p_term: mark }));
+    check('аптека не видит продуктовый справочник', phFound.length === 1 && phFound[0].name.endsWith('аспирин'), phFound);
+    await fails('неизвестный тип магазина', ph.rpc('create_org', { p_name: 'X', p_business: 'zoo' }), 'Неизвестный тип');
+
+    await must(admin.from('catalog_products').delete().like('name', `${mark}%`));
+    // поставщик иначе остался бы на общей витрине
+    for (const id of [orgA, orgB, supOrg, phOrg]) await admin.from('orgs').delete().eq('id', id);
   }
 
   console.log(failed ? `\nПровалено проверок: ${failed}` : '\nВсе проверки пройдены');

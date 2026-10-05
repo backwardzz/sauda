@@ -29,6 +29,8 @@ import { Market } from './pages/market/Market';
 import { MarketSupplier } from './pages/market/MarketSupplier';
 import { Orders } from './pages/market/Orders';
 import { OrderView } from './pages/market/OrderView';
+import { Catalog } from './pages/catalog/Catalog';
+import { NewStore } from './pages/catalog/NewStore';
 import { SupplierHome } from './pages/supplier/SupplierHome';
 import { SupplierCatalog } from './pages/supplier/SupplierCatalog';
 import { CompanyProfile } from './pages/supplier/CompanyProfile';
@@ -91,6 +93,8 @@ export function App() {
         <Route path="/products" element={<Products />} />
         <Route path="/products/new" element={<ProductCard />} />
         <Route path="/products/:id" element={<ProductCard />} />
+        <Route path="/catalog" element={<Catalog />} />
+        <Route path="/catalog/starter" element={<NewStore />} />
         <Route path="/quick" element={<QuickProducts />} />
         <Route path="/stock" element={<Stock />} />
         <Route path="/invoice" element={<InvoiceImport />} />

@@ -49,6 +49,12 @@ export function Dashboard() {
     [org.id, store.id],
   );
 
+  // пустая база товаров — повод предложить пакеты для нового магазина
+  const products = useQuery(
+    async () => (await db.from('products').select('id', { count: 'exact', head: true }).eq('org_id', org.id).eq('archived', false)).count,
+    [org.id],
+  );
+
   const sum = (f: (r: SalesRow) => number) => (days.data ?? []).reduce((s, r) => s + Number(f(r)), 0);
   const revenue = sum((r) => r.revenue);
   const cost = sum((r) => r.cost);
@@ -78,6 +84,31 @@ export function Dashboard() {
         <h1>Показатели по магазинам</h1>
         <span className="muted">{scope.storeId ? store.name : 'Все магазины'}</span>
       </div>
+      {products.data === 0 && (
+        <div className="card banner">
+          <div className="grow">
+            {org.business === 'pharmacy' ? (
+              <>
+                <b>Раздел для аптек в разработке</b>
+                <div className="muted">Справочника лекарств пока нет: добавьте товары вручную или загрузите список из Excel.</div>
+              </>
+            ) : (
+              <>
+                <b>У вас новый магазин?</b>
+                <div className="muted">Товаров пока нет. Возьмите готовый пакет ходовых товаров — названия, штрихкоды и категории уже заполнены.</div>
+              </>
+            )}
+          </div>
+          {org.business === 'pharmacy' ? (
+            <Link className="btn" to="/products">Список товаров</Link>
+          ) : (
+            <>
+              <Link className="btn" to="/catalog">Каталог товаров</Link>
+              <Link className="btn primary" to="/catalog/starter">У меня новый магазин</Link>
+            </>
+          )}
+        </div>
+      )}
       <div className="toolbar">{scope.controls}</div>
 
       <div className="stat-grid">

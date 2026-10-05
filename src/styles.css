@@ -274,6 +274,18 @@ input[type='checkbox'] { width: 16px; height: 16px; accent-color: var(--accent);
 .step.done .step-dot { background: var(--accent); border-color: var(--accent); color: #fff; }
 .menu-item .muted { margin-left: auto; font-size: 12.5px; }
 
+/* ── Каталог товаров и пакеты для нового магазина ── */
+.side-count { font-size: 12.5px; color: var(--muted); font-weight: 400; font-variant-numeric: tabular-nums; }
+.pack-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; align-items: start; }
+.pack-card.active { border-color: var(--accent); }
+.pack-head { display: flex; align-items: flex-start; gap: 10px; padding: 14px 16px 8px; cursor: pointer; }
+.pack-head input { margin-top: 2px; flex: none; }
+.pack-head b { display: block; font-size: 15px; }
+.pack-foot { display: flex; align-items: center; gap: 8px; padding: 0 8px 10px 42px; font-size: 13px; }
+.pack-items { max-height: 320px; overflow: auto; padding: 6px 16px 10px; border-top: 1px solid var(--line); }
+.banner { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 14px 16px; margin-bottom: 14px; border-color: var(--accent); background: var(--accent-weak); }
+.choice.small button { padding: 9px 12px; }
+
 /* ── Вход ── */
 .auth { min-height: 100%; display: grid; place-items: center; padding: 24px; }
 .auth-card { width: 100%; max-width: 400px; padding: 28px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow); }

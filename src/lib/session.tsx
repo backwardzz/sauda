@@ -85,17 +85,15 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       db.from('org_members').select('role, orgs(*)').eq('user_id', userId).order('created_at') as never,
     );
     const list = rows.filter((r) => r.orgs).map((r) => ({ role: r.role, org: r.orgs }));
-    setMemberships(list);
     const current = list.find((m) => m.org.id === orgId) ?? list[0];
-    if (!current) {
-      setStores([]);
-      setRegisters([]);
-      return;
-    }
-    const [s, r] = await Promise.all([
-      q<Store[]>(db.from('stores').select('*').eq('org_id', current.org.id).order('created_at')),
-      q<Register[]>(db.from('registers').select('*').eq('org_id', current.org.id).order('created_at')),
-    ]);
+    const [s, r] = current
+      ? await Promise.all([
+          q<Store[]>(db.from('stores').select('*').eq('org_id', current.org.id).order('created_at')),
+          q<Register[]>(db.from('registers').select('*').eq('org_id', current.org.id).order('created_at')),
+        ])
+      : [[], []];
+    // компания и её магазины появляются одним обновлением: страницы магазина не рисуются без торговой точки
+    setMemberships(list);
     setStores(s);
     setRegisters(r);
   }, [userId, orgId]);

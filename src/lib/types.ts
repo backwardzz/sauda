@@ -15,6 +15,8 @@ export interface Org {
   timezone: string;
   /** Магазин ведёт учёт и кассу, поставщик — каталог и заказы магазинов. */
   kind: 'store' | 'supplier';
+  /** Чем торгует магазин. Аптека пока заглушка: отдельного учёта лекарств нет. */
+  business: 'grocery' | 'pharmacy';
   description: string;
   phone: string;
   min_order: number;

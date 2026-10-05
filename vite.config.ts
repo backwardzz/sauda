@@ -5,5 +5,6 @@ import react from '@vitejs/plugin-react';
 export default defineConfig({
   base: './',
   plugins: [react()],
-  server: { port: 5181 },
+  // порт задаёт панель превью через PORT: в папке могут работать серверы нескольких сессий
+  server: { port: Number(process.env.PORT) || 5181 },
 });

@@ -43,6 +43,7 @@ const MANAGER_NAV: Section[] = [
     label: 'Товары',
     items: [
       { label: 'Список товаров', to: '/products' },
+      { label: 'Каталог товаров', to: '/catalog' },
       { label: 'Быстрые товары', to: '/quick' },
       { label: 'Склад', to: '/stock' },
       { label: 'Оприходование', to: '/docs/posting' },
@@ -153,7 +154,7 @@ export function Layout() {
             <div className="nav-menu" style={{ left: 'auto', right: 0 }}>
               <div style={{ padding: '6px 10px 8px' }}>
                 <div><b>{org?.name}</b></div>
-                <div className="muted">{isSupplier ? 'Поставщик' : store?.name} · {role ? ROLE_LABEL[role] : ''}</div>
+                <div className="muted">{isSupplier ? 'Поставщик' : org?.business === 'pharmacy' ? `Аптека · ${store?.name}` : store?.name} · {role ? ROLE_LABEL[role] : ''}</div>
                 <div className="muted">{user?.email}</div>
               </div>
               {memberships.length > 1 &&
