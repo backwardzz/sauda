@@ -16,7 +16,8 @@
     "seed": "tsx scripts/seed.ts",
     "dev-user": "tsx scripts/dev-user.ts",
     "import": "tsx scripts/import-catalog.ts",
-    "catalog": "tsx scripts/load-catalog.ts"
+    "catalog": "tsx scripts/load-catalog.ts",
+    "seed:brands": "tsx scripts/seed-brands.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0",

@@ -32,6 +32,9 @@ const PATHS = {
   doc: 'M6 3h9l4 4v14H6zM14 3v5h5M9 13h6M9 17h6',
   up: 'M6 15l6-6 6 6',
   swap: 'M4 8h14l-3-3M20 16H6l3 3',
+  grid: 'M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z',
+  list: 'M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01',
+  image: 'M3 5h18v14H3zM3 16l5-5 4 4 3-3 6 6M15.5 9.5v.01',
   building: 'M4 21V4h10v17M14 9h6v12M8 8h2M8 12h2M8 16h2M17 13v.01M17 17v.01M2 21h20',
 } as const;
 

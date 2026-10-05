@@ -343,15 +343,18 @@ async function main() {
   const imp2 = await must(s.rpc('import_supplier_products', {
     p_org: supOrg,
     p_rows: [
-      { name: 'Кола 1 л', barcode: '4870000000011', price: 350, category: 'Напитки', pack_qty: 6 },
+      { name: 'Кола 1 л', barcode: '4870000000011', price: 350, category: 'Напитки', pack_qty: 6, image_url: 'https://example.test/cola.jpg' },
       { name: 'Новый лимонад', barcode: '4870000009991', price: 200, unit: 'шт' },
-      { name: 'Сок', barcode: '4870000009992', price: 400 },
+      { name: 'Сок', barcode: '4870000009992', price: 400, image_url: 'javascript:alert(1)' },
     ],
   }));
   check('каталог поставщика загружен', imp2.created === 3, imp2);
   await fails('магазин не может импортировать в чужой каталог', a.rpc('import_supplier_products', { p_org: supOrg, p_rows: [] }), 'Нет доступа');
   const catalog = await must(a.from('supplier_products').select('*').eq('org_id', supOrg));
   check('магазин видит каталог поставщика', catalog.length === 3);
+  const img = (code: string) => catalog.find((p: Row) => p.barcode === code)?.image_url;
+  check('фото товара: сохраняется только ссылка https', img('4870000000011') === 'https://example.test/cola.jpg' && img('4870000009992') === '', catalog);
+  await fails('фото не по https отклоняется', s.from('supplier_products').update({ image_url: 'http://example.test/a.jpg' }).eq('org_id', supOrg).select(), 'supplier_products_image_https');
   check('магазин видит поставщика на витрине', (await must(a.from('orgs').select('id').eq('kind', 'supplier').eq('id', supOrg))).length === 1);
   check('поставщик не видит товары магазина', (await must(s.from('products').select('id'))).length === 0);
   const sp = (barcode: string) => catalog.find((p: Row) => p.barcode === barcode).id;

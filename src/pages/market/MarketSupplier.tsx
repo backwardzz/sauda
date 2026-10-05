@@ -2,11 +2,12 @@ import { useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { suggestQty, useCart } from '../../lib/cart';
 import { money, parseNum, qty as fmtQty, round2 } from '../../lib/format';
-import { useQuery } from '../../lib/hooks';
+import { useQuery, useStored } from '../../lib/hooks';
 import { useWorkspace } from '../../lib/session';
 import { db, q } from '../../lib/supabase';
 import type { Org, StockRow, SupplierProduct } from '../../lib/types';
 import { Icon } from '../../ui/Icon';
+import { ProductImage } from '../../ui/ProductImage';
 import { toast } from '../../ui/toast';
 
 type Mine = Pick<StockRow, 'barcode' | 'qty' | 'min_stock' | 'low' | 'unit'>;
@@ -23,6 +24,7 @@ export function MarketSupplier() {
   const [onlyCart, setOnlyCart] = useState(false);
   const [comment, setComment] = useState('');
   const [busy, setBusy] = useState(false);
+  const [view, setView] = useStored<'grid' | 'table'>('sauda:market:view', 'grid');
 
   const supplier = useQuery(() => q<Org | null>(db.from('orgs').select('*').eq('id', id).eq('kind', 'supplier').maybeSingle()), [id]);
   const catalog = useQuery(
@@ -116,12 +118,55 @@ export function MarketSupplier() {
         <label className="check-row"><input type="checkbox" checked={onlyLow} onChange={(e) => setOnlyLow(e.target.checked)} />Заканчивается у меня{lowCount ? ` · ${lowCount}` : ''}</label>
         <label className="check-row"><input type="checkbox" checked={onlyCart} onChange={(e) => setOnlyCart(e.target.checked)} />В корзине</label>
         <span className="spacer" />
+        <div className="segmented" role="group" aria-label="Вид каталога">
+          <button className={view === 'grid' ? 'active' : ''} onClick={() => setView('grid')} aria-label="Плиткой" title="Плиткой"><Icon name="grid" size={16} /></button>
+          <button className={view === 'table' ? 'active' : ''} onClick={() => setView('table')} aria-label="Таблицей" title="Таблицей"><Icon name="list" size={16} /></button>
+        </div>
         <button className="btn" disabled={!lowCount} onClick={addLow}>
           <Icon name="bolt" size={16} />Заказать всё, что заканчивается
         </button>
       </div>
 
-      <div className="table-wrap">
+      {view === 'grid' && (
+        catalog.error ? <div className="card empty error-text">{catalog.error}</div>
+        : shown.length === 0 ? <div className="card empty">{catalog.loading ? 'Загрузка…' : items.length ? 'Ничего не найдено' : 'Поставщик ещё не добавил товары'}</div>
+        : (
+          <div className="product-grid">
+            {shown.map((p) => {
+              const m = stock.get(p.barcode);
+              const n = cart[p.id] ?? 0;
+              const pack = Number(p.pack_qty);
+              return (
+                <div className={`card product-card ${n > 0 ? 'active' : ''}`} key={p.id}>
+                  <ProductImage src={p.image_url} alt={p.name} />
+                  <div className="product-name" title={p.name}>{p.name}</div>
+                  <div className="muted product-meta">
+                    {p.category}{pack !== 1 && ` · по ${fmtQty(pack)} ${p.unit}`}
+                  </div>
+                  <div className="row">
+                    <b className="num product-price">{money(p.price)} <span className="stat-unit">{org.currency}</span></b>
+                    <span className="spacer" />
+                    {mine.loading ? null : !m ? <span className="badge">нет в базе</span>
+                      : <span className={`badge ${m.low ? 'warn' : ''}`}>у вас {fmtQty(m.qty)} {m.unit}</span>}
+                  </div>
+                  {p.available ? (
+                    <div className="qty-box">
+                      <button onClick={() => setQty(p.id, n - pack)} disabled={n <= 0} aria-label={`Меньше: ${p.name}`}>−</button>
+                      <input className="grow" value={n || ''} placeholder="0" inputMode="decimal" aria-label={`Количество: ${p.name}`}
+                        onChange={(e) => setQty(p.id, parseNum(e.target.value))} />
+                      <button onClick={() => setQty(p.id, n + pack)} aria-label={`Больше: ${p.name}`}>+</button>
+                    </div>
+                  ) : (
+                    <div className="center muted" style={{ lineHeight: '32px' }}>нет в наличии</div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )
+      )}
+
+      {view === 'table' && <div className="table-wrap">
         <table className="table">
           <thead>
             <tr>
@@ -147,8 +192,13 @@ export function MarketSupplier() {
                 return (
                   <tr key={p.id} className={n > 0 ? 'selected' : ''}>
                     <td>
-                      <div>{p.name}</div>
-                      <div className="muted num" style={{ fontSize: 12.5 }}>{p.barcode}</div>
+                      <div className="row">
+                        <ProductImage src={p.image_url} alt="" className="small" />
+                        <div>
+                          <div>{p.name}</div>
+                          <div className="muted num" style={{ fontSize: 12.5 }}>{p.barcode}</div>
+                        </div>
+                      </div>
                     </td>
                     <td className="muted">{p.category}</td>
                     <td className="right">
@@ -176,7 +226,13 @@ export function MarketSupplier() {
             )}
           </tbody>
         </table>
-      </div>
+      </div>}
+
+      {items.some((p) => p.image_url.includes('facts.org')) && (
+        <p className="hint" style={{ marginTop: 10 }}>
+          Фото товаров: Open Food Facts и родственные открытые базы, лицензия CC BY-SA.
+        </p>
+      )}
 
       {lines.length > 0 && (
         <div className="cartbar">

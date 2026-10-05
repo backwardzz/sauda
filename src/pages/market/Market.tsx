@@ -6,6 +6,7 @@ import { useQuery } from '../../lib/hooks';
 import { useWorkspace } from '../../lib/session';
 import { db, q } from '../../lib/supabase';
 import type { Org } from '../../lib/types';
+import { ProductImage } from '../../ui/ProductImage';
 
 /** Витрина поставщиков для магазина. */
 export function Market() {
@@ -15,11 +16,11 @@ export function Market() {
   const suppliers = useQuery(async () => {
     const [orgs, products] = await Promise.all([
       q<Org[]>(db.from('orgs').select('*').eq('kind', 'supplier').order('name')),
-      q<{ org_id: string; category: string }[]>(db.from('supplier_products').select('org_id, category').eq('archived', false).limit(20000)),
+      q<{ org_id: string; category: string; image_url: string }[]>(db.from('supplier_products').select('org_id, category, image_url').eq('archived', false).limit(20000)),
     ]);
     return orgs.map((o) => {
       const own = products.filter((p) => p.org_id === o.id);
-      return { org: o, count: own.length, categories: [...new Set(own.map((p) => p.category).filter(Boolean))].slice(0, 5) };
+      return { org: o, count: own.length, images: own.map((p) => p.image_url).filter(Boolean).slice(0, 5), categories: [...new Set(own.map((p) => p.category).filter(Boolean))].slice(0, 5) };
     });
   }, []);
 
@@ -44,7 +45,7 @@ export function Market() {
         <div className="card empty">{term ? 'Ничего не найдено' : 'На площадке пока нет поставщиков'}</div>
       )}
       <div className="supplier-grid">
-        {list.map(({ org: s, count, categories }) => {
+        {list.map(({ org: s, count, categories, images }) => {
           const inCart = Object.keys(readCart(store.id, s.id)).length;
           return (
             <Link key={s.id} to={`/market/${s.id}`} className="card supplier-card">
@@ -56,6 +57,11 @@ export function Market() {
                 </div>
                 {inCart > 0 && <span className="badge accent">в корзине {inCart}</span>}
               </div>
+              {images.length > 0 && (
+                <div className="supplier-shots">
+                  {images.map((src) => <ProductImage key={src} src={src} alt="" />)}
+                </div>
+              )}
               {s.description && <p>{s.description}</p>}
               <div className="row wrap">
                 {categories.map((c) => <span className="badge" key={c}>{c}</span>)}

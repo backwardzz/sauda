@@ -33,6 +33,8 @@ export interface SupplierProduct {
   price: number;
   /** Кратность заказа: товар отпускается упаковками. */
   pack_qty: number;
+  /** Ссылка https на фото товара; пусто — фото нет. */
+  image_url: string;
   available: boolean;
   archived: boolean;
 }

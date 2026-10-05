@@ -10,9 +10,10 @@ import { exportXlsx, readXlsx } from '../../lib/xlsx';
 import { DataTable, type Column } from '../../ui/DataTable';
 import { Icon } from '../../ui/Icon';
 import { Modal } from '../../ui/Modal';
+import { ProductImage } from '../../ui/ProductImage';
 import { toast } from '../../ui/toast';
 
-const EMPTY = { name: '', barcode: '', unit: 'шт' as Unit, category: '', price: '', pack: '1', available: true };
+const EMPTY = { name: '', barcode: '', unit: 'шт' as Unit, category: '', price: '', pack: '1', image: '', available: true };
 
 /** Каталог поставщика: то, что видят и заказывают магазины. */
 export function SupplierCatalog() {
@@ -33,7 +34,7 @@ export function SupplierCatalog() {
   const rows = all.filter((p) => !term || p.name.toLowerCase().includes(term) || p.barcode.includes(term) || p.category.toLowerCase().includes(term));
 
   const open = (p: SupplierProduct | 'new') => {
-    setForm(p === 'new' ? EMPTY : { name: p.name, barcode: p.barcode, unit: p.unit, category: p.category, price: String(p.price), pack: String(p.pack_qty), available: p.available });
+    setForm(p === 'new' ? EMPTY : { name: p.name, barcode: p.barcode, unit: p.unit, category: p.category, price: String(p.price), pack: String(p.pack_qty), image: p.image_url, available: p.available });
     setEdit(p);
   };
 
@@ -53,9 +54,10 @@ export function SupplierCatalog() {
 
   const save = () => {
     if (!form.name.trim() || !form.barcode.trim()) return toast.error('Укажите название и штрихкод');
+    if (form.image.trim() && !/^https:\/\//i.test(form.image.trim())) return toast.error('Ссылка на фото должна начинаться с https://');
     const row = {
       org_id: org.id, name: form.name.trim(), barcode: form.barcode.trim(), unit: form.unit, category: form.category.trim(),
-      price: parseNum(form.price), pack_qty: parseNum(form.pack) > 0 ? parseNum(form.pack) : 1, available: form.available,
+      price: parseNum(form.price), pack_qty: parseNum(form.pack) > 0 ? parseNum(form.pack) : 1, image_url: form.image.trim(), available: form.available,
     };
     void run(
       () => (edit === 'new' ? q(db.from('supplier_products').insert(row)) : q(db.from('supplier_products').update(row).eq('id', (edit as SupplierProduct).id))),
@@ -92,7 +94,7 @@ export function SupplierCatalog() {
   };
 
   const columns: Column<SupplierProduct>[] = [
-    { key: 'name', title: 'Товар', fixed: true, sortable: true, value: (p) => p.name, render: (p) => <a>{p.name}</a> },
+    { key: 'name', title: 'Товар', fixed: true, sortable: true, value: (p) => p.name, render: (p) => <span className="row"><ProductImage src={p.image_url} alt="" className="small" /><a>{p.name}</a></span> },
     { key: 'barcode', title: 'Штрихкод', render: (p) => <span className="num">{p.barcode}</span> },
     { key: 'category', title: 'Категория', sortable: true, value: (p) => p.category },
     { key: 'pack', title: 'Упаковка', align: 'right', render: (p) => (Number(p.pack_qty) !== 1 ? `по ${fmtQty(p.pack_qty)} ${p.unit}` : p.unit) },
@@ -179,6 +181,13 @@ export function SupplierCatalog() {
               <input value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} list="supplier-categories" />
               <datalist id="supplier-categories">{categories.map((c) => <option key={c} value={c} />)}</datalist>
             </label>
+            <div className="field wide">
+              <span>Фото товара (ссылка)</span>
+              <div className="row">
+                <ProductImage src={form.image.trim()} alt="" className="small" key={form.image} />
+                <input className="grow" value={form.image} onChange={(e) => setForm({ ...form, image: e.target.value })} placeholder="https://…" inputMode="url" />
+              </div>
+            </div>
             <label className="check-row wide">
               <input type="checkbox" checked={form.available} onChange={(e) => setForm({ ...form, available: e.target.checked })} />
               В наличии: магазины могут заказывать
