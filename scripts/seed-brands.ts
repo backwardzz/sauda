@@ -1,11 +1,13 @@
 // Демо-поставщики с известными марками для наглядности витрины: товары и штрихкоды берутся из
 // samples/catalog.xlsx, картинки — из открытых баз Open Food Facts / Open Beauty Facts / Open Products Facts
-// (лицензия CC BY-SA, в каталоге хранится только ссылка). Работает только с локальной базой.
+// (лицензия CC BY-SA, в каталоге хранится только ссылка). Берутся только фото на белом фоне: скрипт скачивает
+// каждое фото и проверяет края кадра. Товары без такого фото в каталог не попадают. Работает только с локальной базой.
 //   npm run seed:brands            — создать или обновить 10 демо-поставщиков (вход rep@sauda.test)
 //   npm run seed:brands -- --dry   — показать, что попадёт в каталоги, без записи в базу
 // Ответы баз кешируются в samples/image-cache.json: повторный запуск в сеть почти не ходит.
 import { createClient } from '@supabase/supabase-js';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import sharp from 'sharp';
 import * as XLSX from 'xlsx';
 import { parseImport, type ImportRow } from '../src/lib/importParse';
 
@@ -25,7 +27,7 @@ const FILE = 'samples/catalog.xlsx';
 const CACHE = 'samples/image-cache.json';
 const MAX_ITEMS = 36;
 /** Сколько товаров марки проверяем на картинку. */
-const MAX_LOOKUPS = 90;
+const MAX_LOOKUPS = 160;
 
 interface Brand {
   name: string;
@@ -59,36 +61,92 @@ async function must(p: PromiseLike<{ data: any; error: { message: string } | nul
   return data;
 }
 
-const cache: Record<string, string> = existsSync(CACHE) ? JSON.parse(readFileSync(CACHE, 'utf8')) : {};
+interface Cache {
+  /** штрихкод → ссылки на фото лицевой стороны (по языкам упаковки) */
+  fronts: Record<string, string[]>;
+  /** ссылка на фото → доля белого по краям кадра (0…1) */
+  white: Record<string, number>;
+}
+const loaded = existsSync(CACHE) ? JSON.parse(readFileSync(CACHE, 'utf8')) : {};
+const cache: Cache = loaded.fronts ? loaded : { fronts: {}, white: {} };
 const SOURCES = ['world.openfoodfacts.org', 'world.openbeautyfacts.org', 'world.openproductsfacts.org'];
+const UA = { 'User-Agent': 'SaudaDemoSeed/0.1 (local development)' };
+/** Фото считается снятым на белом фоне, если по краям кадра столько белого. */
+const WHITE_MIN = 0.85;
 let requests = 0;
 
-/** Ссылка на фото товара по штрихкоду; пустая строка — фото нет ни в одной базе. */
-async function image(barcode: string): Promise<string> {
-  if (barcode in cache) return cache[barcode];
-  let found = '';
+const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** Все выбранные в базе фото лицевой стороны товара. */
+async function fronts(barcode: string): Promise<string[]> {
+  if (barcode in cache.fronts) return cache.fronts[barcode];
+  let list: string[] = [];
   for (const host of SOURCES) {
     // базы просят не больше 100 запросов в минуту
-    await new Promise((r) => setTimeout(r, 700));
+    await pause(700);
     requests++;
     try {
-      const res = await fetch(`https://${host}/api/v2/product/${barcode}.json?fields=image_front_url`, {
-        headers: { 'User-Agent': 'SaudaDemoSeed/0.1 (local development)' },
-        signal: AbortSignal.timeout(15000),
-      });
+      const res = await fetch(`https://${host}/api/v2/product/${barcode}.json?fields=selected_images`, { headers: UA, signal: AbortSignal.timeout(15000) });
       if (!res.ok) continue;
-      const img = ((await res.json()) as { product?: { image_front_url?: string } }).product?.image_front_url;
-      if (img && img.startsWith('https://')) {
-        found = img;
+      const json = (await res.json()) as { product?: { selected_images?: { front?: { display?: Record<string, string> } } } };
+      const display = json.product?.selected_images?.front?.display;
+      if (display) {
+        list = [...new Set(Object.values(display))].filter((u) => u.startsWith('https://')).slice(0, 8);
         break;
       }
     } catch {
-      // сеть недоступна: товар попадёт в каталог без картинки, в кеш ответ не пишем
-      return '';
+      return []; // сеть недоступна: ответ не кешируем
     }
   }
-  cache[barcode] = found;
-  return found;
+  cache.fronts[barcode] = list;
+  return list;
+}
+
+/** Доля почти белых пикселей в рамке шириной 8% по краям кадра: у студийного фото на белом фоне близка к 1. */
+async function whiteness(src: string): Promise<number> {
+  if (src in cache.white) return cache.white[src];
+  let score = 0;
+  try {
+    await pause(150);
+    const res = await fetch(src, { headers: UA, signal: AbortSignal.timeout(20000) });
+    if (res.ok) {
+      const size = 50;
+      const px = await sharp(Buffer.from(await res.arrayBuffer())).resize(size, size, { fit: 'fill' }).removeAlpha().raw().toBuffer();
+      const edge = 4;
+      let white = 0;
+      let total = 0;
+      let inner = 0;
+      for (let y = 0; y < size; y++) {
+        for (let x = 0; x < size; x++) {
+          const i = (y * size + x) * 3;
+          const [r, g, b] = [px[i], px[i + 1], px[i + 2]];
+          const isWhite = Math.min(r, g, b) > 232 && Math.max(r, g, b) - Math.min(r, g, b) < 18;
+          if (x < edge || y < edge || x >= size - edge || y >= size - edge) {
+            total++;
+            if (isWhite) white++;
+          } else if (!isWhite) inner++;
+        }
+      }
+      // пустой белый кадр без товара не подходит
+      score = inner > (size - 2 * edge) ** 2 * 0.15 ? white / total : 0;
+    }
+  } catch {
+    return 0;
+  }
+  cache.white[src] = score;
+  return score;
+}
+
+/** Лучшее фото товара на белом фоне; пустая строка — такого фото нет. */
+async function image(barcode: string): Promise<string> {
+  let best = '';
+  let bestScore = 0;
+  for (const src of await fronts(barcode)) {
+    const score = await whiteness(src);
+    if (score > bestScore) [best, bestScore] = [src, score];
+    if (score >= 0.97) break;
+  }
+  return bestScore >= WHITE_MIN ? best : '';
 }
 
 const factoryCode = (code: string) => /^(\d{8}|\d{12,13})$/.test(code) && !code.startsWith('2');
@@ -115,12 +173,11 @@ async function main() {
       });
     }
     writeFileSync(CACHE, JSON.stringify(cache));
-    // сначала товары с картинками; без картинок — только чтобы каталог не был пустым
-    const withImage = rows.filter((r) => r.image_url);
-    const picked = [...withImage, ...rows.filter((r) => !r.image_url).slice(0, Math.max(0, 8 - withImage.length))].slice(0, MAX_ITEMS);
+    // в каталог попадают только товары с фото на белом фоне: витрина выглядит единообразно
+    const picked = rows.filter((r) => r.image_url).slice(0, MAX_ITEMS);
     picked.forEach((r) => taken.add(r.barcode));
     catalogs.push({ brand, rows: picked });
-    console.log(`\r${brand.name}: товаров ${picked.length}, с картинками ${picked.filter((r) => r.image_url).length} (подходило ${candidates.length})`);
+    console.log(`\r${brand.name}: товаров с фото на белом фоне ${picked.length} (проверено ${candidates.length})`);
   }
   console.log(`Запросов к базам картинок: ${requests}`);
   if (dry) return;
@@ -131,8 +188,14 @@ async function main() {
     if (up.error) throw up.error;
   }
   const mine = (await must(rep.from('org_members').select('orgs(id, name, kind)'))) as { orgs: { id: string; name: string; kind: string } }[];
+  const admin = env.SUPABASE_SERVICE_ROLE_KEY ? createClient(url, env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } }) : null;
   for (const { brand, rows } of catalogs) {
     let org = mine.find((m) => m.orgs.kind === 'supplier' && m.orgs.name === brand.name)?.orgs.id;
+    if (rows.length < 4) {
+      // мало товаров с хорошими фото — нового поставщика не заводим, уже созданного не трогаем
+      console.log(`${brand.name}: пропущен — товаров с фото на белом фоне меньше 4`);
+      continue;
+    }
     if (!org) org = (await must(rep.rpc('create_org', { p_name: brand.name, p_kind: 'supplier' }))) as string;
     await must(rep.from('orgs').update({
       description: brand.description, phone: brand.phone, min_order: brand.min_order, delivery_note: brand.delivery_note,
@@ -143,13 +206,12 @@ async function main() {
   }
 
   // вход для разработки (dev / admin1) видит новых поставщиков как владелец
-  if (env.SUPABASE_SERVICE_ROLE_KEY) {
-    const admin = createClient(url, env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
+  if (admin) {
     const dev = (await must(admin.from('profiles').select('id').eq('email', 'dev@sauda.test')))[0]?.id;
     const orgs = (await must(rep.from('org_members').select('org_id'))) as { org_id: string }[];
     if (dev) await must(admin.from('org_members').upsert(orgs.map((o) => ({ org_id: o.org_id, user_id: dev, role: 'owner' })), { onConflict: 'org_id,user_id' }));
   }
-  console.log(`Готово: демо-поставщиков ${catalogs.length}. Вход торгового представителя: ${REP_EMAIL}, пароль — DEMO_PASSWORD.`);
+  console.log(`Готово: демо-поставщиков ${catalogs.filter((c) => c.rows.length >= 4).length}. Вход торгового представителя: ${REP_EMAIL}, пароль — DEMO_PASSWORD.`);
 }
 
 main().catch((e) => {
