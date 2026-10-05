@@ -47,3 +47,19 @@ export function markupPct(purchase: number, sale: number): number {
 export function marginPct(revenue: number, profit: number): number {
   return revenue > 0 ? round2((profit / revenue) * 100) : 0;
 }
+
+/** Казахстанский номер в едином виде: «87010001122» и «7010001122» → «+7 701 000 11 22». Остальное — как ввели. */
+export function formatPhone(raw: string): string {
+  const d = raw.replace(/\D/g, '');
+  const n = d.length === 11 && (d[0] === '7' || d[0] === '8') ? d.slice(1) : d.length === 10 ? d : null;
+  return n ? `+7 ${n.slice(0, 3)} ${n.slice(3, 6)} ${n.slice(6, 8)} ${n.slice(8)}` : raw.trim();
+}
+
+/** «1 товар», «2 товара», «5 товаров». */
+export function plural(n: number, one: string, few: string, many: string): string {
+  const m10 = Math.abs(n) % 10;
+  const m100 = Math.abs(n) % 100;
+  if (m10 === 1 && m100 !== 11) return one;
+  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return few;
+  return many;
+}

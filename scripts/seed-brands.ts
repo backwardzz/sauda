@@ -1,8 +1,10 @@
-// Демо-поставщики с известными марками для наглядности витрины: товары и штрихкоды берутся из
+// Демо-компании с известными марками для наглядности витрины: товары и штрихкоды берутся из
 // samples/catalog.xlsx, картинки — из открытых баз Open Food Facts / Open Beauty Facts / Open Products Facts
 // (лицензия CC BY-SA, в каталоге хранится только ссылка). Берутся только фото на белом фоне: скрипт скачивает
 // каждое фото и проверяет края кадра. Товары без такого фото в каталог не попадают. Работает только с локальной базой.
-//   npm run seed:brands            — создать или обновить 10 демо-поставщиков (вход rep@sauda.test)
+// Размер в названии становится видом товара: «Coca cola 0.5л» и «Coca cola 1л» — один товар с двумя видами.
+// Кроме марок создаётся оптовая база с ценами на все товары пакетов «У меня новый магазин».
+//   npm run seed:brands            — создать или обновить демо-компании (вход rep@sauda.test)
 //   npm run seed:brands -- --dry   — показать, что попадёт в каталоги, без записи в базу
 // Ответы баз кешируются в samples/image-cache.json: повторный запуск в сеть почти не ходит.
 import { createClient } from '@supabase/supabase-js';
@@ -10,6 +12,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import sharp from 'sharp';
 import * as XLSX from 'xlsx';
 import { parseImport, type ImportRow } from '../src/lib/importParse';
+import { splitName } from '../src/lib/variants';
 
 const env = Object.fromEntries(
   readFileSync(new URL('../.env.local', import.meta.url), 'utf8')
@@ -38,19 +41,21 @@ interface Brand {
   min_order: number;
   delivery_note: string;
   phone: string;
+  /** филиалы кроме главного офиса в Алматы */
+  cities?: string[];
 }
 
 const DEMO = 'Демо-каталог для примера, заказы не исполняются.';
 const BRANDS: Brand[] = [
-  { name: 'Coca-Cola', match: /coca|fanta|sprite|bonaqua|fuse ?tea|schweppes|piko/i, category: 'Напитки', pack: 6, min_order: 30000, delivery_note: 'Доставка пн, ср, пт', phone: '+7 700 000 01 01', description: `Coca-Cola, Fanta, Sprite, Fuse Tea, Piko, BonAqua. ${DEMO}` },
-  { name: 'PepsiCo', match: /pepsi|lay'?s|cheetos|mirinda|7 ?up|adrenaline|lipton ice|aqua minerale|doritos/i, category: 'Напитки и снеки', pack: 6, min_order: 30000, delivery_note: 'Доставка вт, чт', phone: '+7 700 000 01 02', description: `Pepsi, Lay's, Cheetos, Mirinda, Adrenaline. ${DEMO}` },
+  { name: 'Coca-Cola', match: /coca|fanta|sprite|bonaqua|fuse ?tea|schweppes|piko/i, category: 'Напитки', pack: 6, min_order: 30000, delivery_note: 'Доставка пн, ср, пт', phone: '+7 700 000 01 01', cities: ['Астана', 'Шымкент', 'Караганда'], description: `Coca-Cola, Fanta, Sprite, Fuse Tea, Piko, BonAqua. ${DEMO}` },
+  { name: 'PepsiCo', match: /pepsi|lay'?s|cheetos|mirinda|7 ?up|adrenaline|lipton ice|aqua minerale|doritos/i, category: 'Напитки и снеки', pack: 6, min_order: 30000, delivery_note: 'Доставка вт, чт', phone: '+7 700 000 01 02', cities: ['Астана', 'Актобе'], description: `Pepsi, Lay's, Cheetos, Mirinda, Adrenaline. ${DEMO}` },
   { name: 'Mars', match: /snickers|\bmars\b|twix|bounty|milky ?way|orbit|m&m|skittles|whiskas|kitekat|pedigree/i, category: 'Сладости', pack: 12, min_order: 25000, delivery_note: 'Доставка раз в неделю', phone: '+7 700 000 01 03', description: `Snickers, Mars, Twix, Bounty, Orbit, Whiskas. ${DEMO}` },
   { name: 'Nestlé', match: /nescafe|nesquik|kit ?kat|maggi|nestogen|nestle|gerber/i, category: 'Кофе, сладости, детское питание', pack: 6, min_order: 25000, delivery_note: 'Доставка вт, пт', phone: '+7 700 000 01 04', description: `Nescafé, Nesquik, KitKat, Maggi, Gerber. ${DEMO}` },
   { name: 'Mondelēz', match: /alpen gold|milka|oreo|\btuc\b|dirol|юбилейное|барни|halls|picnic/i, category: 'Сладости', pack: 12, min_order: 20000, delivery_note: 'Доставка раз в неделю', phone: '+7 700 000 01 05', description: `Alpen Gold, Milka, Oreo, Dirol, «Юбилейное». ${DEMO}` },
   { name: 'Ferrero', match: /kinder|raffaello|nutella|tic ?tac|ferrero/i, category: 'Сладости', pack: 6, min_order: 20000, delivery_note: 'Доставка раз в неделю', phone: '+7 700 000 01 06', description: `Kinder, Raffaello, Nutella, Tic Tac. ${DEMO}` },
   { name: 'Jacobs', match: /jacobs|carte noire/i, category: 'Кофе', pack: 6, min_order: 15000, delivery_note: 'Доставка по заявке', phone: '+7 700 000 01 07', description: `Кофе Jacobs и Carte Noire. ${DEMO}` },
   { name: 'Unilever', match: /lipton|calve|knorr|rexona|\bdove\b|domestos|\bclear\b|\baxe\b|\bcif\b/i, category: 'Чай, соусы, уход', pack: 6, min_order: 20000, delivery_note: 'Доставка ср', phone: '+7 700 000 01 08', description: `Lipton, Calvé, Knorr, Rexona, Dove, Domestos. ${DEMO}` },
-  { name: 'Рахат', match: /рахат|rakhat/i, category: 'Сладости', pack: 10, min_order: 15000, delivery_note: 'Доставка пн, чт', phone: '+7 700 000 01 09', description: `Шоколад и конфеты «Рахат». ${DEMO}` },
+  { name: 'Рахат', match: /рахат|rakhat/i, category: 'Сладости', pack: 10, min_order: 15000, delivery_note: 'Доставка пн, чт', phone: '+7 700 000 01 09', cities: ['Астана'], description: `Шоколад и конфеты «Рахат». ${DEMO}` },
   { name: 'Tassay', match: /tassay/i, category: 'Вода и напитки', pack: 6, min_order: 10000, delivery_note: 'Доставка ежедневно', phone: '+7 700 000 01 10', description: `Вода и напитки Tassay. ${DEMO}` },
 ];
 
@@ -152,15 +157,36 @@ async function image(barcode: string): Promise<string> {
 const factoryCode = (code: string) => /^(\d{8}|\d{12,13})$/.test(code) && !code.startsWith('2');
 const cap = (s: string) => (s ? s[0].toUpperCase() + s.slice(1) : s);
 /** Цена для магазинов — условная: розничная цена минус наценка, округлённая до 5. */
-const price = (r: ImportRow) => Math.max(5, Math.round(((r.sale_price ?? 0) * 0.8) / 5) * 5);
+const price = (r: ImportRow, share = 0.8) => Math.max(5, Math.round(((r.sale_price ?? 0) * share) / 5) * 5);
+/** Фото из кеша прошлых запусков: без обращений в сеть. */
+const cachedImage = (barcode: string) =>
+  (cache.fronts[barcode] ?? []).map((src) => [src, cache.white[src] ?? 0] as const).sort((a, b) => b[1] - a[1]).find(([, score]) => score >= WHITE_MIN)?.[0] ?? '';
+
+// детерминированный генератор: остатки одинаковы при каждом запуске
+let state = 20261011;
+const int = (a: number, b: number) => {
+  state = (state * 1664525 + 1013904223) % 4294967296;
+  return a + Math.floor((state / 4294967296) * (b - a + 1));
+};
+
+type Row = { name: string; barcode: string; unit: string; price: number; category: string; pack_qty: number; image_url: string };
+/** Оптовая база: цены на все товары пакетов «У меня новый магазин», чтобы новый магазин мог сразу заказать. */
+const WHOLESALE = {
+  name: 'ТОО «Оптовая база Алатау»',
+  description: `Продукты, напитки, бытовая химия и товары первой необходимости одной поставкой. ${DEMO}`,
+  phone: '+7 700 000 02 00', address: 'ул. Северное кольцо, 12', min_order: 20000,
+  delivery_note: 'Доставка ежедневно, заказ до 18:00 накануне', payment_terms: 'Наличными или переводом при получении',
+  cities: ['Астана', 'Шымкент', 'Караганда', 'Актобе'],
+};
 
 async function main() {
   if (!existsSync(FILE)) throw new Error(`Файл не найден: ${FILE}`);
   const wb = XLSX.read(readFileSync(FILE), { type: 'buffer' });
   const sheet = XLSX.utils.sheet_to_json<unknown[]>(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: '', raw: true });
-  const all = parseImport(sheet).items.filter((i) => factoryCode(i.barcode) && (i.sale_price ?? 0) > 0 && !/\d\s*тг/i.test(i.name));
+  // цена 10 000 000 в выгрузке — заглушка «цена не задана»: такие товары в демо-каталоги не идут
+  const all = parseImport(sheet).items.filter((i) => factoryCode(i.barcode) && (i.sale_price ?? 0) > 0 && (i.sale_price ?? 0) < 1_000_000 && !/\d\s*тг/i.test(i.name));
 
-  const catalogs: { brand: Brand; rows: { name: string; barcode: string; unit: string; price: number; category: string; pack_qty: number; image_url: string }[] }[] = [];
+  const catalogs: { brand: Brand; rows: Row[] }[] = [];
   const taken = new Set<string>();
   for (const brand of BRANDS) {
     const candidates = all.filter((i) => brand.match.test(i.name) && !taken.has(i.barcode)).slice(0, MAX_LOOKUPS);
@@ -189,29 +215,83 @@ async function main() {
   }
   const mine = (await must(rep.from('org_members').select('orgs(id, name, kind)'))) as { orgs: { id: string; name: string; kind: string } }[];
   const admin = env.SUPABASE_SERVICE_ROLE_KEY ? createClient(url, env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } }) : null;
+  const cities = (await must(rep.from('cities').select('id, name'))) as { id: number; name: string }[];
+  const city = (name: string) => cities.find((c) => c.name === name)!.id;
+
+  /** Компания с профилем, филиалами и каталогом: создаётся или обновляется по названию. */
+  const publish = async (
+    c: { name: string; description: string; phone: string; address?: string; min_order: number; delivery_note: string; payment_terms?: string; cities?: string[] },
+    type: 'manufacturer' | 'wholesaler', rows: Row[],
+  ) => {
+    let org = mine.find((m) => m.orgs.kind === 'company' && m.orgs.name === c.name)?.orgs.id;
+    if (!org) {
+      org = (await must(rep.rpc('create_org', {
+        p_name: c.name, p_kind: 'company', p_city: city('Алматы'),
+        p_profile: { phone: c.phone, address: c.address ?? '', company_type: type, description: c.description, email: REP_EMAIL, contact_name: 'Данияр Торговый' },
+      }))) as string;
+    }
+    await must(rep.from('companies').update({
+      company_type: type, description: c.description, min_order: c.min_order, delivery_note: c.delivery_note, payment_terms: c.payment_terms ?? 'Оплата при получении',
+    }).eq('org_id', org));
+
+    let branches = (await must(rep.from('company_branches').select('id, city_id, is_main').eq('org_id', org))) as { id: string; city_id: number; is_main: boolean }[];
+    for (const name of c.cities ?? []) {
+      if (branches.some((b) => b.city_id === city(name))) continue;
+      await must(rep.from('company_branches').insert({ org_id: org, city_id: city(name), name: `Филиал в городе ${name}`, phone: c.phone, work_hours: 'пн–сб, 9:00–18:00' }));
+    }
+    branches = (await must(rep.from('company_branches').select('id, city_id, is_main').eq('org_id', org))) as typeof branches;
+
+    // каталог пересобирается целиком: виды, которых больше нет в подборке, уходят в архив вместе с опустевшими товарами
+    const keep = new Set(rows.map((r) => r.barcode));
+    const live = (await must(rep.from('company_variants').select('id, barcode').eq('org_id', org).eq('archived', false).limit(20000))) as { id: string; barcode: string }[];
+    const gone = live.filter((v) => !keep.has(v.barcode)).map((v) => v.id);
+    for (let i = 0; i < gone.length; i += 100) await must(rep.from('company_variants').update({ archived: true }).in('id', gone.slice(i, i + 100)));
+    for (let i = 0; i < rows.length; i += 200) {
+      await must(rep.rpc('import_company_products', {
+        p_org: org,
+        p_rows: rows.slice(i, i + 200).map((r) => ({
+          ...splitName(r.name), barcode: r.barcode, unit: r.unit, price: r.price, category: r.category, pack_qty: r.pack_qty, image_url: r.image_url,
+          stock: r.pack_qty * int(15, 80),
+        })),
+      }));
+    }
+    // в остальных филиалах — часть ассортимента с запасом поменьше
+    const variants = (await must(rep.from('company_variants').select('id, pack_qty').eq('org_id', org).eq('archived', false).order('barcode'))) as { id: string; pack_qty: number }[];
+    for (const b of branches.filter((x) => !x.is_main)) {
+      for (const v of variants.filter((_, k) => k % 4 !== 3)) {
+        await must(rep.rpc('set_company_stock', { p_variant: v.id, p_branch: b.id, p_qty: Number(v.pack_qty) * int(3, 20) }));
+      }
+    }
+    return variants.length;
+  };
+
   for (const { brand, rows } of catalogs) {
-    let org = mine.find((m) => m.orgs.kind === 'supplier' && m.orgs.name === brand.name)?.orgs.id;
     if (rows.length < 4) {
-      // мало товаров с хорошими фото — нового поставщика не заводим, уже созданного не трогаем
+      // мало товаров с хорошими фото — новую компанию не заводим, уже созданную не трогаем
       console.log(`${brand.name}: пропущен — товаров с фото на белом фоне меньше 4`);
       continue;
     }
-    if (!org) org = (await must(rep.rpc('create_org', { p_name: brand.name, p_kind: 'supplier' }))) as string;
-    await must(rep.from('orgs').update({
-      description: brand.description, phone: brand.phone, min_order: brand.min_order, delivery_note: brand.delivery_note,
-    }).eq('id', org));
-    // каталог пересобирается целиком: товары, которых больше нет в подборке, уходят в архив
-    await must(rep.from('supplier_products').update({ archived: true }).eq('org_id', org).not('barcode', 'in', `(${rows.map((r) => r.barcode).join(',')})`));
-    await must(rep.rpc('import_supplier_products', { p_org: org, p_rows: rows }));
+    await publish(brand, 'manufacturer', rows);
   }
 
-  // вход для разработки (dev / admin1) видит новых поставщиков как владелец
+  // оптовая база: всё, что входит в пакеты «У меня новый магазин», по цене чуть выше, чем у производителя
+  const starter = (await must(rep.from('catalog_products').select('name, barcode, unit, category, subcategory').neq('starter_pack', '').limit(5000))) as
+    { name: string; barcode: string; unit: string; category: string; subcategory: string }[];
+  const byCode = new Map(all.map((i) => [i.barcode, i]));
+  const wholesale: Row[] = starter.flatMap((c) => {
+    const src = byCode.get(c.barcode);
+    return src ? [{ name: c.name, barcode: c.barcode, unit: c.unit, price: price(src, 0.85), category: cap(c.subcategory || c.category), pack_qty: c.unit === 'шт' ? 6 : 1, image_url: cachedImage(c.barcode) }] : [];
+  });
+  const wholesaleCount = wholesale.length ? await publish(WHOLESALE, 'wholesaler', wholesale) : 0;
+
+  // вход для разработки (dev / admin1) видит новые компании как владелец
   if (admin) {
     const dev = (await must(admin.from('profiles').select('id').eq('email', 'dev@sauda.test')))[0]?.id;
-    const orgs = (await must(rep.from('org_members').select('org_id'))) as { org_id: string }[];
-    if (dev) await must(admin.from('org_members').upsert(orgs.map((o) => ({ org_id: o.org_id, user_id: dev, role: 'owner' })), { onConflict: 'org_id,user_id' }));
+    // запрос возвращает строки всех участников компаний: без повторов, иначе upsert заденет одну строку дважды
+    const orgs = [...new Set(((await must(rep.from('org_members').select('org_id'))) as { org_id: string }[]).map((o) => o.org_id))];
+    if (dev) await must(admin.from('org_members').upsert(orgs.map((org_id) => ({ org_id, user_id: dev, role: 'owner' })), { onConflict: 'org_id,user_id' }));
   }
-  console.log(`Готово: демо-поставщиков ${catalogs.filter((c) => c.rows.length >= 4).length}. Вход торгового представителя: ${REP_EMAIL}, пароль — DEMO_PASSWORD.`);
+  console.log(`Готово: компаний с марками ${catalogs.filter((c) => c.rows.length >= 4).length}, оптовая база — ${wholesaleCount} видов товаров. Вход компании: ${REP_EMAIL}, пароль — DEMO_PASSWORD.`);
 }
 
 main().catch((e) => {

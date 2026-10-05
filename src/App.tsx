@@ -26,17 +26,20 @@ import { Registers } from './pages/manage/Registers';
 import { Stores } from './pages/manage/Stores';
 import { Pos } from './pages/Pos';
 import { Market } from './pages/market/Market';
-import { MarketSupplier } from './pages/market/MarketSupplier';
+import { MarketCompany } from './pages/market/MarketCompany';
+import { CartPage } from './pages/market/Cart';
 import { Orders } from './pages/market/Orders';
 import { OrderView } from './pages/market/OrderView';
 import { Catalog } from './pages/catalog/Catalog';
 import { NewStore } from './pages/catalog/NewStore';
-import { SupplierHome } from './pages/supplier/SupplierHome';
-import { SupplierCatalog } from './pages/supplier/SupplierCatalog';
-import { CompanyProfile } from './pages/supplier/CompanyProfile';
+import { CompanyHome } from './pages/company/CompanyHome';
+import { CompanyCatalog } from './pages/company/CompanyCatalog';
+import { CompanyProduct } from './pages/company/CompanyProduct';
+import { CompanyStock } from './pages/company/CompanyStock';
+import { Profile } from './pages/profile/Profile';
 
 export function App() {
-  const { user, loading, org, canManage } = useSession();
+  const { user, loading, org, company, store, canManage } = useSession();
 
   if (!configured) {
     return (
@@ -54,22 +57,29 @@ export function App() {
   if (!user) return <AuthPage />;
   if (!org) return <Onboarding />;
 
-  // Поставщик (завод, дистрибьютор, торговый представитель): каталог и заказы магазинов, без кассы и склада.
-  if (org.kind === 'supplier') {
+  // Компания (производитель, дистрибьютор): каталог, склад и заказы магазинов, без кассы.
+  if (org.kind === 'company') {
+    // при переключении аккаунта витрина компании подгружается следом за списком организаций
+    if (company?.org_id !== org.id) return <div className="auth muted">Загрузка…</div>;
     return (
       <Routes>
         <Route element={<Layout />}>
-          <Route path="/" element={<SupplierHome />} />
+          <Route path="/" element={<CompanyHome />} />
           <Route path="/orders" element={<Orders />} />
           <Route path="/orders/:id" element={<OrderView />} />
-          <Route path="/catalog" element={<SupplierCatalog />} />
-          <Route path="/company" element={<CompanyProfile />} />
+          <Route path="/catalog" element={<CompanyCatalog />} />
+          <Route path="/catalog/:id" element={<CompanyProduct />} />
+          <Route path="/stock" element={<CompanyStock />} />
+          <Route path="/profile" element={<Profile />} />
           <Route path="/users" element={<Users />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     );
   }
+
+  // страницы магазина не рисуются, пока не подгружены его торговые точки (например, сразу после переключения с компании)
+  if (store?.org_id !== org.id) return <div className="auth muted">Загрузка…</div>;
 
   // Кассиру доступна касса и чеки; справочники, склад и отчёты — владельцу и менеджеру.
   if (!canManage) {
@@ -99,7 +109,8 @@ export function App() {
         <Route path="/stock" element={<Stock />} />
         <Route path="/invoice" element={<InvoiceImport />} />
         <Route path="/market" element={<Market />} />
-        <Route path="/market/:id" element={<MarketSupplier />} />
+        <Route path="/market/:id" element={<MarketCompany />} />
+        <Route path="/cart" element={<CartPage />} />
         <Route path="/orders" element={<Orders />} />
         <Route path="/orders/:id" element={<OrderView />} />
         <Route path="/docs/:kind" element={<StockDocs />} />
@@ -115,6 +126,7 @@ export function App() {
         <Route path="/reports/abc" element={<AbcReport />} />
         <Route path="/customers" element={<Contractors kind="customer" />} />
         <Route path="/suppliers" element={<Contractors kind="supplier" />} />
+        <Route path="/profile" element={<Profile />} />
         <Route path="/users" element={<Users />} />
         <Route path="/registers" element={<Registers />} />
         <Route path="/stores" element={<Stores />} />

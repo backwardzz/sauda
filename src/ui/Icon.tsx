@@ -36,6 +36,11 @@ const PATHS = {
   list: 'M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01',
   image: 'M3 5h18v14H3zM3 16l5-5 4 4 3-3 6 6M15.5 9.5v.01',
   building: 'M4 21V4h10v17M14 9h6v12M8 8h2M8 12h2M8 16h2M17 13v.01M17 17v.01M2 21h20',
+  pin: 'M12 21s-7-6.2-7-11a7 7 0 0114 0c0 4.8-7 11-7 11zM12 12.5a2.5 2.5 0 100-5 2.5 2.5 0 000 5z',
+  phone: 'M5 4h4l2 5-2.5 1.5a11 11 0 005 5L15 13l5 2v4a2 2 0 01-2 2A16 16 0 013 6a2 2 0 012-2z',
+  copy: 'M9 9h11v11H9zM5 15H4V4h11v1',
+  warehouse: 'M3 21V9l9-5 9 5v12M7 21v-8h10v8M7 17h10',
+  truck: 'M2 6h11v10H2zM13 10h5l3 3v3h-8zM6.5 19a1.5 1.5 0 100-3 1.5 1.5 0 000 3zM17.5 19a1.5 1.5 0 100-3 1.5 1.5 0 000 3z',
 } as const;
 
 export type IconName = keyof typeof PATHS;

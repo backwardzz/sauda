@@ -30,19 +30,19 @@ const ROLE_HINT: Record<Role, string> = {
   cashier: 'Только касса и чеки',
 };
 
-const SUPPLIER_ROLE: Record<Role, { label: string; hint: string }> = {
+const COMPANY_ROLE: Record<Role, { label: string; hint: string }> = {
   owner: { label: 'Владелец', hint: 'Полный доступ, профиль компании и сотрудники' },
-  manager: { label: 'Менеджер', hint: 'Каталог, цены и заказы' },
-  cashier: { label: 'Торговый представитель', hint: 'Только заказы магазинов' },
+  manager: { label: 'Менеджер', hint: 'Каталог, цены, склад и заказы' },
+  cashier: { label: 'Сотрудник', hint: 'Только заказы магазинов' },
 };
 
 export function Users() {
   const { org, user, role } = useOrg();
   const isOwner = role === 'owner';
-  // у поставщика те же три уровня доступа, но называются по-своему
-  const supplier = org.kind === 'supplier';
-  const label = (r: Role) => (supplier ? SUPPLIER_ROLE[r].label : ROLE_LABEL[r]);
-  const hint = (r: Role) => (supplier ? SUPPLIER_ROLE[r].hint : ROLE_HINT[r]);
+  // у компании те же три уровня доступа, но называются по-своему
+  const company = org.kind === 'company';
+  const label = (r: Role) => (company ? COMPANY_ROLE[r].label : ROLE_LABEL[r]);
+  const hint = (r: Role) => (company ? COMPANY_ROLE[r].hint : ROLE_HINT[r]);
   const [inviting, setInviting] = useState(false);
   const [email, setEmail] = useState('');
   const [inviteRole, setInviteRole] = useState<Role>('cashier');
@@ -84,7 +84,7 @@ export function Users() {
   const invite = () => {
     const value = email.trim().toLowerCase();
     if (!/^\S+@\S+\.\S+$/.test(value)) return toast.error('Укажите почту сотрудника');
-    if ((members.data ?? []).some((m) => m.email.toLowerCase() === value)) return toast.error('Этот сотрудник уже в компании');
+    if ((members.data ?? []).some((m) => m.email.toLowerCase() === value)) return toast.error('Этот сотрудник уже добавлен');
     void act(async () => {
       await q(db.from('invites').insert({ org_id: org.id, email: value, role: inviteRole }));
       setInviting(false);
@@ -107,7 +107,7 @@ export function Users() {
           label(m.role)
         ),
     },
-    { key: 'since', title: 'В компании с', render: (m) => dateOnly(m.created_at) },
+    { key: 'since', title: 'В команде с', render: (m) => dateOnly(m.created_at) },
     {
       key: 'actions', title: '', fixed: true, width: '50px',
       render: (m) =>
@@ -173,7 +173,7 @@ export function Users() {
                 {(Object.keys(ROLE_LABEL) as Role[]).map((r) => <option key={r} value={r}>{label(r)} — {hint(r)}</option>)}
               </select>
             </label>
-            <p className="hint">Письмо не отправляется автоматически: сотрудник сам регистрируется на сайте с этой почтой и сразу попадает в компанию.</p>
+            <p className="hint">Письмо не отправляется автоматически: сотрудник сам регистрируется на сайте с этой почтой и сразу получает доступ.</p>
           </div>
         </Modal>
       )}

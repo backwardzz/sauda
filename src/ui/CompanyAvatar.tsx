@@ -9,20 +9,23 @@ function colorOf(name: string): string {
   return COLORS[h % COLORS.length];
 }
 
-/** Инициалы: «Coca-Cola» → CC, «Асу (RG Brands)» → А, «Procter & Gamble» → PG. */
+/** Инициалы: «Coca-Cola» → CC, «Асу (RG Brands)» → А, «Procter & Gamble» → PG, «ТОО «Напитки Азии»» → НА. */
 function initials(name: string): string {
-  const words = name.replace(/\(.*?\)/g, '').split(/[\s\-&]+/).filter((w) => /\p{L}/u.test(w));
+  // кавычки и форма собственности в инициалы не идут
+  const clean = name.replace(/\(.*?\)/g, '').replace(/[«»"'„“”]/g, '').replace(/^\s*(ТОО|ИП|АО|КХ|ОО|ПК)\s+/i, '');
+  const words = clean.split(/[\s\-&]+/).filter((w) => /\p{L}/u.test(w));
   return (words.length > 1 ? words[0][0] + words[1][0] : (words[0] ?? '?').slice(0, 2)).toUpperCase();
 }
 
 /** Аватарка компании: логотип по ссылке, а без него — инициалы на постоянном для компании цвете. */
 export function CompanyAvatar({ name, logo, size = 48 }: { name: string; logo?: string; size?: number }) {
-  const [broken, setBroken] = useState(false);
+  // запоминается адрес, который не загрузился: новый логотип показывается сразу
+  const [broken, setBroken] = useState('');
   const style = { width: size, height: size, fontSize: Math.round(size * 0.36) };
-  if (logo && !broken) {
+  if (logo && broken !== logo) {
     return (
       <span className="company-avatar logo" style={style}>
-        <img src={logo} alt="" onError={() => setBroken(true)} referrerPolicy="no-referrer" />
+        <img src={logo} alt="" onError={() => setBroken(logo)} referrerPolicy="no-referrer" />
       </span>
     );
   }

@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { bestOffer, clampQty, loadOffers, useCarts } from '../../lib/cart';
+import { money, parseNum, plural, qty as fmtQty } from '../../lib/format';
 import { useDebounced, useQuery, useStored } from '../../lib/hooks';
 import { useWorkspace } from '../../lib/session';
 import { db, q } from '../../lib/supabase';
 import type { CatalogItem } from '../../lib/starter';
+import type { Offer } from '../../lib/types';
 import { Pager } from '../../ui/DataTable';
 import { CompanyAvatar, VerifiedBadge } from '../../ui/CompanyAvatar';
 import { Icon } from '../../ui/Icon';
@@ -15,9 +18,9 @@ interface CategoryRow {
   cnt: number;
 }
 
-type Row = CatalogItem & { company: string; total: number };
+type Row = CatalogItem & { company: string; offers: number; total: number };
 
-interface CompanyRow {
+interface BrandRow {
   /** пустая строка — товары без распознанного производителя («Другие») */
   company: string;
   cnt: number;
@@ -41,47 +44,63 @@ export function PharmacyStub({ title }: { title: string }) {
   );
 }
 
-/** Общий справочник товаров: магазин находит товар и добавляет его в свой список вместе с категорией. */
+/** Общий каталог: магазин находит товар, сразу видит цены компаний, заказывает и добавляет его в свой список. */
 export function Catalog() {
   const { org } = useWorkspace();
   return org.business === 'pharmacy' ? <PharmacyStub title="Каталог товаров" /> : <CatalogList />;
 }
 
 function CatalogList() {
-  const { org } = useWorkspace();
+  const { org, store } = useWorkspace();
   const navigate = useNavigate();
+  const cart = useCarts(store.id);
   const [search, setSearch] = useState('');
   const term = useDebounced(search);
   /** null — все товары, '' — без категории */
   const [category, setCategory] = useState<string | null>(null);
   const [sub, setSub] = useState<string | null>(null);
-  /** null — компания не выбрана: в категории показываются карточки компаний */
-  const [company, setCompany] = useState<string | null>(null);
+  /** null — производитель не выбран: в категории показываются карточки производителей */
+  const [brand, setBrand] = useState<string | null>(null);
   const [onlyNew, setOnlyNew] = useStored('sauda:catalog:onlyNew', false);
+  const [onlyOffers, setOnlyOffers] = useStored('sauda:catalog:onlyOffers', false);
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useStored('sauda:catalog:pageSize', 50);
   const [picked, setPicked] = useState<Set<string>>(new Set());
+  /** штрихкод → выбранное предложение, если магазин предпочёл не самое дешёвое */
+  const [chosen, setChosen] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
 
-  useEffect(() => setPage(0), [term, category, sub, company, onlyNew, pageSize]);
-  // при поиске ищем по всей категории, минуя карточки компаний
-  const showCompanies = category !== null && company === null && !term;
+  useEffect(() => setPage(0), [term, category, sub, brand, onlyNew, onlyOffers, pageSize]);
+  // при поиске и отборе «с ценами» ищем по всей категории, минуя карточки производителей
+  const showBrands = category !== null && brand === null && !term && !onlyOffers;
 
   const cats = useQuery(() => q<CategoryRow[]>(db.rpc('catalog_categories', { p_org: org.id })), [org.id]);
-  const companies = useQuery(
-    // список нужен и внутри компании: из него берутся аватарка и отметка для шапки
-    async () => (category !== null ? q<CompanyRow[]>(db.rpc('catalog_company_list', { p_org: org.id, p_category: category, p_subcategory: sub })) : []),
+  const brands = useQuery(
+    // список нужен и внутри производителя: из него берутся аватарка и отметка для шапки
+    async () => (category !== null ? q<BrandRow[]>(db.rpc('catalog_company_list', { p_org: org.id, p_category: category, p_subcategory: sub })) : []),
     [org.id, category, sub],
   );
   const list = useQuery(
-    async () => (showCompanies ? [] : q<Row[]>(db.rpc('catalog_search', {
+    async () => (showBrands ? [] : q<Row[]>(db.rpc('catalog_search', {
       p_org: org.id, p_term: term, p_category: category, p_subcategory: sub, p_only_new: onlyNew,
-      p_limit: pageSize, p_offset: page * pageSize, p_company: term ? null : company,
+      p_limit: pageSize, p_offset: page * pageSize, p_company: term ? null : brand, p_only_offers: onlyOffers,
     }))),
-    [org.id, term, category, sub, company, onlyNew, page, pageSize, showCompanies],
+    [org.id, term, category, sub, brand, onlyNew, onlyOffers, page, pageSize, showBrands],
   );
-  const current = company === null ? null
-    : companies.data?.find((c) => c.company === company) ?? { company, cnt: 0, mine: 0, logo_url: '', verified: false };
+  const rows = useMemo(() => list.data ?? [], [list.data]);
+  // цены компаний на товары страницы: по штрихкоду
+  const offers = useQuery(
+    () => loadOffers(store.id, { barcodes: rows.filter((r) => Number(r.offers) > 0).map((r) => r.barcode) }),
+    [store.id, rows],
+  );
+  const byBarcode = useMemo(() => {
+    const map = new Map<string, Offer[]>();
+    for (const o of offers.data ?? []) map.set(o.barcode, [...(map.get(o.barcode) ?? []), o]);
+    return map;
+  }, [offers.data]);
+
+  const current = brand === null ? null
+    : brands.data?.find((c) => c.company === brand) ?? { company: brand, cnt: 0, mine: 0, logo_url: '', verified: false };
 
   const tree = useMemo(() => {
     const roots = new Map<string, { total: number; subs: CategoryRow[] }>();
@@ -96,10 +115,13 @@ function CatalogList() {
   }, [cats.data]);
   const totalAll = tree.reduce((s, [, r]) => s + r.total, 0);
 
-  const rows = list.data ?? [];
   const total = Number(rows[0]?.total ?? 0);
   const free = rows.filter((r) => !r.mine);
   const allPicked = free.length > 0 && free.every((r) => picked.has(r.id));
+  const offerOf = (r: Row) => {
+    const own = byBarcode.get(r.barcode) ?? [];
+    return own.find((o) => o.variant_id === chosen[r.barcode]) ?? bestOffer(own);
+  };
 
   const toggle = (id: string) =>
     setPicked((prev) => {
@@ -116,10 +138,15 @@ function CatalogList() {
   const add = async (ids: string[]) => {
     setBusy(true);
     try {
-      const res = await q<{ created: number; skipped: number }>(db.rpc('add_catalog_products', { p_org: org.id, p_ids: ids }));
+      // закупочная цена берётся из выбранного предложения компании, если товар сейчас на странице
+      const prices = rows.filter((r) => ids.includes(r.id)).flatMap((r) => {
+        const o = offerOf(r);
+        return o ? [{ id: r.id, purchase_price: Number(o.price) }] : [];
+      });
+      const res = await q<{ created: number; skipped: number }>(db.rpc('add_catalog_products', { p_org: org.id, p_ids: ids, p_prices: prices }));
       toast.ok(
         `Добавлено товаров: ${res.created}` + (res.skipped ? `, уже были: ${res.skipped}` : '') +
-          '. Цены укажите при приёмке или в карточке товара.',
+          (prices.length ? '. Закупочная цена взята у компании, розничную укажите в карточке товара.' : '. Цены укажите при приёмке или в карточке товара.'),
       );
       // отметки, поставленные пока шёл запрос, сохраняются
       setPicked((prev) => {
@@ -138,14 +165,16 @@ function CatalogList() {
   const select = (c: string | null, s: string | null = null) => {
     setCategory(c);
     setSub(s);
-    setCompany(null);
+    setBrand(null);
   };
 
+  const bar = picked.size > 0 || cart.count > 0;
+
   return (
-    <div className={picked.size ? 'with-cartbar' : ''}>
+    <div className={bar ? 'with-cartbar' : ''}>
       <div className="page-head">
         <h1>Каталог товаров</h1>
-        <span className="muted">Общий справочник: {totalAll || '…'} товаров со штрихкодами. Отметьте нужные — они появятся в вашем списке.</span>
+        <span className="muted">{totalAll || '…'} товаров со штрихкодами. Где есть цена компании — заказывайте сразу, остальное добавляйте в свой список.</span>
       </div>
 
       <div className="toolbar">
@@ -158,10 +187,15 @@ function CatalogList() {
           autoFocus
         />
         <label className="check-row">
+          <input type="checkbox" checked={onlyOffers} onChange={(e) => setOnlyOffers(e.target.checked)} />
+          Только с ценами компаний
+        </label>
+        <label className="check-row">
           <input type="checkbox" checked={onlyNew} onChange={(e) => setOnlyNew(e.target.checked)} />
           Скрыть те, что у меня уже есть
         </label>
         <span className="spacer" />
+        <button className="btn" onClick={() => navigate('/market')}><Icon name="building" size={16} />Компании</button>
         <button className="btn primary" onClick={() => navigate('/catalog/starter')}>
           <Icon name="bolt" size={16} />У меня новый магазин
         </button>
@@ -188,19 +222,19 @@ function CatalogList() {
           ))}
         </div>
 
-        {showCompanies ? (
-          companies.error ? <div className="card empty error-text">{companies.error}</div>
-          : companies.loading && !companies.data?.length ? <div className="card empty">Загрузка…</div>
-          : !companies.data?.length ? <div className="card empty">В этой категории пока нет товаров</div>
+        {showBrands ? (
+          brands.error ? <div className="card empty error-text">{brands.error}</div>
+          : brands.loading && !brands.data?.length ? <div className="card empty">Загрузка…</div>
+          : !brands.data?.length ? <div className="card empty">В этой категории пока нет товаров</div>
           : (
             <div className="company-grid">
-              {companies.data.map((c) => (
-                <button className="card company-card" key={c.company || '—'} onClick={() => setCompany(c.company)}>
+              {brands.data.map((c) => (
+                <button className="card company-card" key={c.company || '—'} onClick={() => setBrand(c.company)}>
                   <CompanyAvatar name={c.company} logo={c.logo_url} />
                   <span className="company-info">
                     <b>{c.company || 'Другие производители'}</b>
                     <span className="muted">
-                      {c.cnt} {plural(c.cnt, 'товар', 'товара', 'товаров')}{Number(c.mine) > 0 && ` · у вас ${c.mine}`}
+                      {c.cnt} {plural(Number(c.cnt), 'товар', 'товара', 'товаров')}{Number(c.mine) > 0 && ` · у вас ${c.mine}`}
                     </span>
                     {c.verified && <VerifiedBadge />}
                   </span>
@@ -212,7 +246,7 @@ function CatalogList() {
         <div>
           {current && !term && (
             <div className="company-head">
-              <button className="icon-btn" onClick={() => setCompany(null)} aria-label="Ко всем компаниям"><Icon name="back" /></button>
+              <button className="icon-btn" onClick={() => setBrand(null)} aria-label="Ко всем производителям"><Icon name="back" /></button>
               <CompanyAvatar name={current.company} logo={current.logo_url} size={40} />
               <div className="grow">
                 <h2>{current.company || 'Другие производители'}</h2>
@@ -229,10 +263,10 @@ function CatalogList() {
                     <input type="checkbox" checked={allPicked} disabled={!free.length} onChange={togglePage} aria-label="Выбрать все на странице" />
                   </th>
                   <th>Название товара</th>
-                  <th>Штрихкод</th>
-                  <th>Ед. изм</th>
                   <th>Категория</th>
-                  <th style={{ width: 150 }} />
+                  <th>Цена у компании</th>
+                  <th className="center" style={{ width: 150 }}>Заказать</th>
+                  <th style={{ width: 130 }} />
                 </tr>
               </thead>
               <tbody>
@@ -241,30 +275,64 @@ function CatalogList() {
                 ) : rows.length === 0 ? (
                   <tr>
                     <td colSpan={6} className="table-note">
-                      {list.loading ? 'Загрузка…' : term || category !== null || onlyNew ? 'Ничего не найдено' : 'Справочник пока пуст'}
+                      {list.loading ? 'Загрузка…' : onlyOffers && !term && category === null ? 'Компании пока не выставили цены на товары каталога' : term || category !== null || onlyNew || onlyOffers ? 'Ничего не найдено' : 'Справочник пока пуст'}
                     </td>
                   </tr>
                 ) : (
-                  rows.map((r) => (
-                    <tr key={r.id} className={picked.has(r.id) ? 'selected clickable' : r.mine ? '' : 'clickable'} onClick={() => !r.mine && toggle(r.id)}>
-                      <td className="cell-check">
-                        <input type="checkbox" checked={r.mine || picked.has(r.id)} disabled={r.mine} readOnly aria-label={`Выбрать: ${r.name}`} />
-                      </td>
-                      <td>{r.name}</td>
-                      <td className="num">{r.barcode}</td>
-                      <td>{r.unit}</td>
-                      <td className="muted">{[r.category, r.subcategory].filter(Boolean).join(' · ')}</td>
-                      <td className="right" onClick={(e) => e.stopPropagation()}>
-                        {r.mine ? (
-                          <span className="badge ok"><Icon name="check" size={13} />уже у вас</span>
-                        ) : (
-                          <button className="btn small" disabled={busy} onClick={() => add([r.id])}>
-                            <Icon name="plus" size={14} />Добавить
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  ))
+                  rows.map((r) => {
+                    const own = byBarcode.get(r.barcode) ?? [];
+                    const o = offerOf(r);
+                    const n = o ? cart.qty(o.company_id, o.variant_id) : 0;
+                    const pack = Number(o?.pack_qty ?? 1);
+                    const out = !!o && o.free != null && Number(o.free) <= 0;
+                    const set = (v: number) => o && cart.setQty(o.company_id, o.variant_id, clampQty(v, o));
+                    return (
+                      <tr key={r.id} className={picked.has(r.id) || n > 0 ? 'selected' : ''}>
+                        <td className="cell-check">
+                          <input type="checkbox" checked={r.mine || picked.has(r.id)} disabled={r.mine} onChange={() => toggle(r.id)} aria-label={`Выбрать: ${r.name}`} />
+                        </td>
+                        <td>
+                          <div>{r.name}</div>
+                          <div className="muted num" style={{ fontSize: 12.5 }}>{r.barcode} · {r.unit}</div>
+                        </td>
+                        <td className="muted">{[r.category, r.subcategory].filter(Boolean).join(' · ')}</td>
+                        <td>
+                          {!o ? (Number(r.offers) > 0 && offers.loading ? <span className="muted">…</span> : <span className="muted">нет предложений</span>) : (
+                            <div className="offer-cell">
+                              <b className="num">{money(o.price)} {org.currency}</b>
+                              {own.length > 1 ? (
+                                <select value={o.variant_id} onChange={(e) => setChosen({ ...chosen, [r.barcode]: e.target.value })} aria-label={`Компания: ${r.name}`}>
+                                  {own.map((x) => <option key={x.variant_id} value={x.variant_id}>{x.company_name} — {money(x.price)}</option>)}
+                                </select>
+                              ) : <Link to={`/market/${o.company_id}`}>{o.company_name}</Link>}
+                              <span className="muted">
+                                {pack !== 1 && `по ${fmtQty(pack)} ${o.unit} · `}
+                                {out ? <span className="error-text">нет в наличии</span> : o.free == null ? 'в наличии' : `в наличии ${fmtQty(o.free)}`}
+                              </span>
+                            </div>
+                          )}
+                        </td>
+                        <td>
+                          {o && !out && (
+                            <div className="qty-box">
+                              <button onClick={() => set(n - pack)} disabled={n <= 0} aria-label={`Меньше: ${r.name}`}>−</button>
+                              <input value={n || ''} placeholder="0" inputMode="decimal" aria-label={`Количество: ${r.name}`} onChange={(e) => set(parseNum(e.target.value))} />
+                              <button onClick={() => set(n + pack)} disabled={o.free != null && n >= Number(o.free)} aria-label={`Больше: ${r.name}`}>+</button>
+                            </div>
+                          )}
+                        </td>
+                        <td className="right">
+                          {r.mine ? (
+                            <span className="badge ok"><Icon name="check" size={13} />уже у вас</span>
+                          ) : (
+                            <button className="btn small" disabled={busy} onClick={() => add([r.id])} title="Добавить в свой список товаров">
+                              <Icon name="plus" size={14} />В мои товары
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>
@@ -274,25 +342,30 @@ function CatalogList() {
         )}
       </div>
 
-      {picked.size > 0 && (
+      {bar && (
         <div className="cartbar">
-          <div>
-            <b>Выбрано товаров: {picked.size}</b>
-            <div className="muted">Добавятся в «Список товаров» с категориями, без цен и остатков</div>
-          </div>
+          {picked.size > 0 && (
+            <>
+              <div>
+                <b>Выбрано товаров: {picked.size}</b>
+                <div className="muted">Добавятся в «Список товаров» с категориями</div>
+              </div>
+              <button className="btn ghost" onClick={() => setPicked(new Set())}>Сбросить</button>
+              <button className="btn primary" disabled={busy} onClick={() => add([...picked])}>Добавить в мои товары</button>
+            </>
+          )}
           <span className="spacer" />
-          <button className="btn ghost" onClick={() => setPicked(new Set())}>Сбросить</button>
-          <button className="btn primary large" disabled={busy} onClick={() => add([...picked])}>Добавить в мои товары</button>
+          {cart.count > 0 && (
+            <>
+              <div>
+                <b>В корзине: {cart.count} {plural(cart.count, 'товар', 'товара', 'товаров')}</b>
+                <div className="muted">Товар, которого у вас ещё нет, заведётся сам при приёмке</div>
+              </div>
+              <button className="btn primary large" onClick={() => navigate('/cart')}><Icon name="cart" size={16} />Перейти в корзину</button>
+            </>
+          )}
         </div>
       )}
     </div>
   );
-}
-
-function plural(n: number, one: string, few: string, many: string): string {
-  const m10 = n % 10;
-  const m100 = n % 100;
-  if (m10 === 1 && m100 !== 11) return one;
-  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return few;
-  return many;
 }

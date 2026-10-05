@@ -9,7 +9,10 @@ export const configured = Boolean(url && key);
 export const db = createClient(url || 'http://127.0.0.1:54321', key || 'missing');
 
 const KNOWN_ERRORS: [RegExp, string][] = [
+  [/company_variants_barcode_uq/, 'Вид товара с таким штрихкодом уже есть в каталоге'],
   [/products_barcode_uq/, 'Товар с таким штрихкодом уже есть'],
+  [/company_stock_qty_check/, 'Остаток не может стать отрицательным'],
+  [/permission denied for table/, 'Недостаточно прав для этого действия'],
   [/invites_org_id_email_key/, 'Этот адрес уже приглашён'],
   [/row-level security/, 'Недостаточно прав для этого действия'],
   [/violates foreign key constraint/, 'Запись используется в других документах'],

@@ -1,20 +1,24 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
+import { Link } from 'react-router-dom';
+import { cityName, useCities } from '../../lib/cities';
+import { formatPhone } from '../../lib/format';
 import { useWorkspace } from '../../lib/session';
 import { db, q } from '../../lib/supabase';
 import type { Store } from '../../lib/types';
+import { CitySelect } from '../../ui/CitySelect';
 import { DataTable, type Column } from '../../ui/DataTable';
 import { Icon } from '../../ui/Icon';
 import { Modal } from '../../ui/Modal';
 import { toast } from '../../ui/toast';
 
-export function Stores() {
-  const { org, role, stores, registers, reload } = useWorkspace();
-  const [edit, setEdit] = useState<Store | 'new' | null>(null);
-  const [form, setForm] = useState({ name: '', address: '' });
-  const [company, setCompany] = useState(org.name);
-  const [busy, setBusy] = useState(false);
+const EMPTY = { name: '', city: null as number | null, address: '', phone: '' };
 
-  useEffect(() => setCompany(org.name), [org.name]);
+export function Stores() {
+  const { org, stores, registers, reload } = useWorkspace();
+  const cities = useCities();
+  const [edit, setEdit] = useState<Store | 'new' | null>(null);
+  const [form, setForm] = useState(EMPTY);
+  const [busy, setBusy] = useState(false);
 
   const run = async (fn: () => Promise<unknown>, ok: string) => {
     setBusy(true);
@@ -31,13 +35,15 @@ export function Stores() {
   };
 
   const open = (s: Store | 'new') => {
-    setForm(s === 'new' ? { name: '', address: '' } : { name: s.name, address: s.address });
+    // новая точка чаще всего в том же городе, что и первая
+    setForm(s === 'new' ? { ...EMPTY, city: stores[0]?.city_id ?? null } : { name: s.name, city: s.city_id, address: s.address, phone: s.phone });
     setEdit(s);
   };
 
   const save = () => {
     if (!form.name.trim()) return toast.error('Укажите название');
-    const row = { org_id: org.id, name: form.name.trim(), address: form.address.trim() };
+    if (form.city == null) return toast.error('Выберите город: по нему компании подбирают ближайший филиал');
+    const row = { org_id: org.id, name: form.name.trim(), city_id: form.city, address: form.address.trim(), phone: formatPhone(form.phone) };
     void run(async () => {
       if (edit === 'new') {
         const created = await q<Store>(db.from('stores').insert(row).select().single());
@@ -50,25 +56,17 @@ export function Stores() {
 
   const columns: Column<Store>[] = [
     { key: 'name', title: 'Название', fixed: true, render: (s) => <a>{s.name}</a> },
+    { key: 'city', title: 'Город', value: (s) => cityName(cities, s.city_id), render: (s) => cityName(cities, s.city_id) || <span className="badge warn">не указан</span> },
     { key: 'address', title: 'Адрес', value: (s) => s.address },
+    { key: 'phone', title: 'Телефон', value: (s) => s.phone },
     { key: 'registers', title: 'Касс', align: 'right', value: (s) => registers.filter((r) => r.store_id === s.id).length },
   ];
 
   return (
     <>
-      <div className="page-head"><h1>Торговые точки</h1></div>
-
-      <div className="card pad" style={{ maxWidth: 560, marginBottom: 16 }}>
-        <div className="section-title">Компания</div>
-        <div className="input-group">
-          <input value={company} onChange={(e) => setCompany(e.target.value)} disabled={role !== 'owner'} aria-label="Название компании" />
-          {role === 'owner' && (
-            <button className="btn" disabled={busy || !company.trim() || company.trim() === org.name}
-              onClick={() => run(() => q(db.from('orgs').update({ name: company.trim() }).eq('id', org.id)), 'Название компании изменено')}>
-              Сохранить
-            </button>
-          )}
-        </div>
+      <div className="page-head">
+        <h1>Торговые точки</h1>
+        <span className="muted">{org.name} · название и реквизиты — в <Link to="/profile">профиле магазина</Link></span>
       </div>
 
       <div className="toolbar">
@@ -80,7 +78,7 @@ export function Stores() {
         <Modal
           title={edit === 'new' ? 'Новая торговая точка' : 'Торговая точка'}
           onClose={() => setEdit(null)}
-          width={460}
+          width={520}
           footer={
             <>
               {edit !== 'new' && stores.length > 1 && (
@@ -95,16 +93,28 @@ export function Stores() {
             </>
           }
         >
-          <div className="stack">
-            <label className="field">
+          <div className="form-grid">
+            <label className="field wide">
               <span>Название <b>*</b></span>
               <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} autoFocus />
             </label>
+            <div className="field">
+              <span>Город <b>*</b></span>
+              <CitySelect value={form.city} onChange={(city) => setForm({ ...form, city })} aria-label="Город" />
+            </div>
             <label className="field">
-              <span>Адрес</span>
-              <input value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} />
+              <span>Телефон</span>
+              <input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} onBlur={() => setForm({ ...form, phone: formatPhone(form.phone) })}
+                inputMode="tel" placeholder="+7 701 000 00 00" />
             </label>
-            {edit !== 'new' && <p className="hint">Точку с продажами или складскими документами удалить нельзя.</p>}
+            <label className="field wide">
+              <span>Адрес</span>
+              <input value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} placeholder="пр. Абая, 10" />
+            </label>
+            <p className="hint wide">
+              Город, адрес и телефон компания видит в заказе этой точки.
+              {edit !== 'new' && ' Точку с продажами или складскими документами удалить нельзя.'}
+            </p>
           </div>
         </Modal>
       )}

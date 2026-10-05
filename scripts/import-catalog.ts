@@ -1,7 +1,7 @@
 // Загрузка товарной базы из Excel в компанию демо-аккаунта на локальной базе.
 // Повторный запуск с обновлённым файлом добавляет новые товары и обновляет существующие (поиск по штрихкоду).
 //   npm run import                                   — samples/catalog.xlsx в компанию «Шалкар»
-//   npm run import -- "C:\путь\к файлу.xlsx" --org "Название компании"
+//   npm run import -- "C:\путь\к файлу.xlsx" --org "Название магазина" --city "Астана"
 import { createClient } from '@supabase/supabase-js';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -22,7 +22,11 @@ if (!/^https?:\/\/(127\.0\.0\.1|localhost)[:/]/.test(url)) {
 const args = process.argv.slice(2);
 const orgFlag = args.indexOf('--org');
 const orgName = orgFlag >= 0 ? args[orgFlag + 1] : 'Шалкар';
-const file = resolve(args.find((a, i) => !a.startsWith('--') && i !== orgFlag + 1) ?? 'samples/catalog.xlsx');
+const cityFlag = args.indexOf('--city');
+const cityName = cityFlag >= 0 ? args[cityFlag + 1] : 'Алматы';
+// значения флагов — не путь к файлу
+const flagValues = new Set([orgFlag, cityFlag].filter((i) => i >= 0).map((i) => i + 1));
+const file = resolve(args.find((a, i) => !a.startsWith('--') && !flagValues.has(i)) ?? 'samples/catalog.xlsx');
 const CHUNK = 500;
 
 async function main() {
@@ -41,10 +45,13 @@ async function main() {
   const orgs = (memberships.data as unknown as { orgs: { id: string; name: string } }[]).map((m) => m.orgs);
   let org = orgs.find((o) => o.name === orgName)?.id;
   if (!org) {
-    const created = await db.rpc('create_org', { p_name: orgName, p_store: orgName });
+    // новому магазину нужен город: по умолчанию Алматы, потом его можно поменять в «Торговых точках»
+    const city = await db.from('cities').select('id').eq('name', cityName).limit(1).maybeSingle();
+    if (!city.data) throw new Error(`Города «${cityName}» нет в справочнике`);
+    const created = await db.rpc('create_org', { p_name: orgName, p_store: orgName, p_city: city.data.id });
     if (created.error) throw new Error(created.error.message);
     org = created.data as string;
-    console.log(`Создана компания «${orgName}»`);
+    console.log(`Создан магазин «${orgName}», город ${cityName}`);
   }
 
   const total = { created: 0, updated: 0, skipped: 0 };

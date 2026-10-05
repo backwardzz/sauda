@@ -10,6 +10,13 @@ export interface ImportRow {
   subcategory: string | null;
   supplier: string | null;
   qty: number | null;
+  /** Прайс компании: товар и вид отдельными столбцами (так выгружает каталог компании). */
+  product: string | null;
+  label: string | null;
+  /** Кратность заказа: сколько штук в упаковке. */
+  pack_qty: number | null;
+  /** Столбец «Цена» без уточнения: в прайсе компании это цена для магазинов. */
+  price: number | null;
 }
 
 const COLUMNS: { key: keyof ImportRow; label: string; re: RegExp }[] = [
@@ -23,7 +30,11 @@ const COLUMNS: { key: keyof ImportRow; label: string; re: RegExp }[] = [
   { key: 'category', label: 'Категория', re: /^категор/ },
   { key: 'subcategory', label: 'Подкатегория', re: /^подкатегор/ },
   { key: 'supplier', label: 'Поставщик', re: /поставщ/ },
-  { key: 'qty', label: 'Остаток', re: /остат|кол-?во|колич/ },
+  { key: 'qty', label: 'Остаток', re: /^(?!.*упаков).*(остат|кол-?во|колич)/ },
+  { key: 'product', label: 'Товар', re: /^товар$/ },
+  { key: 'label', label: 'Вид', re: /^вид$/ },
+  { key: 'pack_qty', label: 'В упаковке', re: /упаков/ },
+  { key: 'price', label: 'Цена', re: /^цена/ },
 ];
 
 const UNIT_ALIASES: [RegExp, string][] = [
@@ -53,16 +64,20 @@ function category(v: unknown): string | null {
 
 const codes = (v: unknown) => String(v ?? '').split(/[;,\s]+/).map((c) => c.trim()).filter(Boolean);
 
-/** Ищет строку заголовка по столбцам «Название» и «Штрихкод», остальные столбцы необязательны. */
+/** Ищет строку заголовка по столбцам «Название» (или «Товар») и «Штрихкод», остальные столбцы необязательны. */
 export function parseImport(rows: unknown[][]): { items: ImportRow[]; found: string[] } {
   for (let r = 0; r < Math.min(rows.length, 20); r++) {
     const head = (rows[r] ?? []).map((c) => String(c ?? '').toLowerCase().trim());
     const col = Object.fromEntries(COLUMNS.map((c) => [c.key, head.findIndex((h) => c.re.test(h))])) as Record<keyof ImportRow, number>;
-    if (col.name < 0 || col.barcode < 0) continue;
+    // без «Названия» годится пара «Товар» и «Вид»: название складывается из них
+    const grouped = col.product >= 0 && (col.name >= 0 || col.label >= 0);
+    if ((col.name < 0 && col.product < 0) || col.barcode < 0) continue;
 
     const items: ImportRow[] = [];
     for (const row of rows.slice(r + 1)) {
-      const name = text(row[col.name]);
+      const product = grouped ? text(row[col.product]) : null;
+      const label = grouped && col.label >= 0 ? text(row[col.label]) ?? '' : null;
+      const name = col.name >= 0 ? text(row[col.name]) : grouped ? text(`${product ?? ''} ${label ?? ''}`) : text(row[col.product]);
       const main = codes(row[col.barcode]);
       if (!name || !main.length) continue;
       const extra = [...main.slice(1), ...(col.extra_barcodes >= 0 ? codes(row[col.extra_barcodes]) : [])];
@@ -80,6 +95,10 @@ export function parseImport(rows: unknown[][]): { items: ImportRow[]; found: str
         subcategory: col.subcategory >= 0 ? text(row[col.subcategory]) : null,
         supplier: col.supplier >= 0 ? text(row[col.supplier]) : null,
         qty: col.qty >= 0 ? num(row[col.qty]) : null,
+        product,
+        label: product ? label ?? '' : null,
+        pack_qty: col.pack_qty >= 0 ? num(row[col.pack_qty]) : null,
+        price: col.price >= 0 ? num(row[col.price]) : null,
       });
     }
     return { items, found: COLUMNS.filter((c) => col[c.key] >= 0).map((c) => c.label) };

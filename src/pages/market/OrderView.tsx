@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
+import { readCart, writeCart } from '../../lib/cart';
 import { dateTime, money, parseNum, qty as fmtQty, round2 } from '../../lib/format';
 import { useQuery } from '../../lib/hooks';
 import { useOrg } from '../../lib/session';
@@ -15,7 +16,7 @@ const STEPS = ['new', 'confirmed', 'shipped', 'received'] as const;
 export function OrderView() {
   const { id = '' } = useParams();
   const navigate = useNavigate();
-  const { org, canManage } = useOrg();
+  const { org, canManage, branches, store } = useOrg();
   const [busy, setBusy] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [edits, setEdits] = useState<Record<string, string>>({});
@@ -30,15 +31,29 @@ export function OrderView() {
     if (o) setReply(o.supplier_comment);
   }, [o?.id, o?.supplier_comment]);
 
+  const isSupplier = o?.supplier_org === org.id;
+  const open = !!o && (o.status === 'new' || o.status === 'confirmed');
+  // компании до отгрузки видно, хватает ли товара на складе филиала
+  const stock = useQuery(async () => {
+    const ids = (o?.order_items ?? []).map((i) => i.variant_id).filter((v): v is string => !!v);
+    if (!isSupplier || !open || !o?.branch_id || !ids.length) return null;
+    const [tracked, rows] = await Promise.all([
+      q<{ id: string }[]>(db.from('company_variants').select('id').in('id', ids).eq('track_stock', true)),
+      q<{ variant_id: string; qty: number }[]>(db.from('company_stock').select('variant_id, qty').eq('branch_id', o.branch_id).in('variant_id', ids)),
+    ]);
+    return new Map(tracked.map((t) => [t.id, Number(rows.find((r) => r.variant_id === t.id)?.qty ?? 0)]));
+  }, [o?.id, o?.branch_id, o?.status, isSupplier]);
+
   if (data.loading && !o) return <div className="empty">Загрузка…</div>;
   if (!o) return <div className="empty">Заказ не найден</div>;
 
-  const isSupplier = o.supplier_org === org.id;
   const items = [...o.order_items].sort((a, b) => a.name.localeCompare(b.name, 'ru'));
   const editable = isSupplier && o.status === 'new';
   const shipQty = (i: OrderItem) => (editable && edits[i.id] !== undefined ? Math.max(parseNum(edits[i.id]), 0) : Number(i.qty_shipped ?? i.qty));
   const total = round2(items.reduce((s, i) => s + shipQty(i) * Number(i.price), 0));
   const changed = items.some((i) => shipQty(i) !== Number(i.qty));
+  const have = (i: OrderItem) => (i.variant_id ? stock.data?.get(i.variant_id) : undefined);
+  const short = items.filter((i) => have(i) !== undefined && have(i)! < shipQty(i));
 
   const run = async (fn: () => Promise<unknown>, ok: string, after?: (r: unknown) => void) => {
     setBusy(true);
@@ -63,6 +78,23 @@ export function OrderView() {
     }), 'Заказ подтверждён');
   const receive = () =>
     run(() => q<string>(db.rpc('receive_order', { p_order: o.id })), 'Создан черновик приёмки: проверьте и проведите', (doc) => navigate(`/docs/supply/${doc as string}`));
+  // «на складе не хватает» → одним нажатием оставить к отгрузке столько, сколько есть
+  const fitStock = () => setEdits({ ...edits, ...Object.fromEntries(short.map((i) => [i.id, String(have(i))])) });
+
+  const repeat = () => {
+    if (!store) return;
+    const cart = { ...readCart(store.id, o.supplier_org) };
+    let added = 0;
+    for (const i of items) {
+      if (!i.variant_id) continue;
+      cart[i.variant_id] = Number(i.qty);
+      added++;
+    }
+    if (!added) return toast.error('Этих товаров больше нет в каталоге компании');
+    writeCart(store.id, o.supplier_org, cart);
+    toast.ok('Товары заказа в корзине: проверьте цены и наличие');
+    navigate('/cart');
+  };
 
   const download = () =>
     exportXlsx(`Заказ № ${o.number} ${isSupplier ? o.store_org_name : o.supplier_name}`, 'Заказ', items.map((i) => ({
@@ -71,6 +103,7 @@ export function OrderView() {
 
   const step = STEPS.indexOf(o.status as (typeof STEPS)[number]);
   const stamps = [o.created_at, o.confirmed_at, o.shipped_at, o.received_at];
+  const showStock = isSupplier && open && !!stock.data;
 
   return (
     <>
@@ -78,7 +111,7 @@ export function OrderView() {
         <button className="icon-btn" onClick={() => navigate('/orders')} aria-label="К списку заказов"><Icon name="back" /></button>
         <h1>Заказ № {o.number}</h1>
         <span className={`badge ${ORDER_STATUS[o.status].badge}`}>{ORDER_STATUS[o.status].label}</span>
-        <span className="muted">{isSupplier ? `${o.store_org_name} · ${[o.store_name, o.store_address].filter(Boolean).join(', ')}` : o.supplier_name}</span>
+        <span className="muted">{isSupplier ? `${o.store_org_name} · ${[o.store_name, o.store_city, o.store_address].filter(Boolean).join(', ')}` : o.supplier_name}</span>
       </div>
 
       {o.status !== 'canceled' && (
@@ -98,28 +131,67 @@ export function OrderView() {
       <div className="toolbar">
         {isSupplier && o.status === 'new' && <button className="btn primary" disabled={busy} onClick={confirm}>{changed ? 'Подтвердить с изменениями' : 'Подтвердить заказ'}</button>}
         {isSupplier && o.status === 'confirmed' && (
-          <button className="btn primary" disabled={busy} onClick={() => run(() => status('shipped'), 'Заказ отгружен: магазин примет его в один клик')}>Отгрузить</button>
+          <button className="btn primary" disabled={busy} onClick={() => run(() => status('shipped'), 'Заказ отгружен: товар списан со склада, магазин примет его в один клик')}>Отгрузить</button>
         )}
         {!isSupplier && o.status === 'shipped' && canManage && <button className="btn primary" disabled={busy} onClick={receive}>Принять товар</button>}
         {!isSupplier && o.supply_doc && <Link className="btn" to={`/docs/supply/${o.supply_doc}`}>Открыть приёмку</Link>}
-        {((isSupplier && ['new', 'confirmed'].includes(o.status)) || (!isSupplier && o.status === 'new' && canManage)) && (
+        {!isSupplier && canManage && ['received', 'canceled'].includes(o.status) && (
+          <button className="btn" onClick={repeat} title="Положить те же товары в корзину"><Icon name="undo" size={16} />Повторить заказ</button>
+        )}
+        {((isSupplier && open) || (!isSupplier && o.status === 'new' && canManage)) && (
           <button className="btn danger" disabled={busy} onClick={() => setConfirmCancel(true)}>Отменить заказ</button>
         )}
         <span className="spacer" />
         <button className="btn" onClick={download}><Icon name="download" size={16} />Скачать</button>
       </div>
 
-      {(o.comment || o.supplier_comment || editable) && (
-        <div className="card filter-grid">
-          {o.comment && <div className="field"><span>Комментарий магазина</span><div>{o.comment}</div></div>}
-          {editable ? (
+      <div className="card filter-grid">
+        {isSupplier ? (
+          <>
+            <div className="field">
+              <span>Магазин</span>
+              <div>
+                {o.store_org_name}
+                {o.store_phone && <> · <a href={`tel:${o.store_phone.replace(/[^\d+]/g, '')}`}>{o.store_phone}</a></>}
+              </div>
+            </div>
+            <div className="field">
+              <span>Куда везти</span>
+              <div>{[o.store_city, o.store_address, o.store_name].filter(Boolean).join(', ') || 'адрес не указан'}</div>
+            </div>
             <label className="field">
-              <span>Ответ магазину</span>
-              <input value={reply} onChange={(e) => setReply(e.target.value)} placeholder="Когда привезём, чего нет в наличии" />
+              <span>Отгружает филиал</span>
+              {open && branches.length > 1 ? (
+                <select value={o.branch_id ?? ''} disabled={busy}
+                  onChange={(e) => run(() => q(db.rpc('set_order_branch', { p_order: o.id, p_branch: e.target.value })), 'Заказ передан другому филиалу')}>
+                  {!o.branch_id && <option value="">Не выбран</option>}
+                  {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                </select>
+              ) : <div>{o.branch_name || '—'}</div>}
             </label>
-          ) : o.supplier_comment ? (
-            <div className="field"><span>Ответ поставщика</span><div>{o.supplier_comment}</div></div>
-          ) : null}
+          </>
+        ) : (
+          <>
+            <div className="field"><span>Компания</span><div><Link to={`/market/${o.supplier_org}`}>{o.supplier_name}</Link></div></div>
+            {o.branch_name && <div className="field"><span>Заказ собирает</span><div>{o.branch_name}</div></div>}
+          </>
+        )}
+        {o.comment && <div className="field"><span>Комментарий магазина</span><div>{o.comment}</div></div>}
+        {editable ? (
+          <label className="field">
+            <span>Ответ магазину</span>
+            <input value={reply} onChange={(e) => setReply(e.target.value)} placeholder="Когда привезём, чего нет в наличии" />
+          </label>
+        ) : o.supplier_comment ? (
+          <div className="field"><span>Ответ компании</span><div>{o.supplier_comment}</div></div>
+        ) : null}
+      </div>
+
+      {short.length > 0 && (
+        <div className="card banner warn">
+          <Icon name="alert" />
+          <span className="grow">На складе филиала не хватает товаров: {short.length}. {editable ? 'Уменьшите количество к отгрузке или передайте заказ другому филиалу.' : 'Пополните остаток или передайте заказ другому филиалу — иначе заказ не отгрузится.'}</span>
+          {editable && <button className="btn" onClick={fitStock}>Отгрузить, сколько есть</button>}
         </div>
       )}
 
@@ -130,6 +202,7 @@ export function OrderView() {
               <th>Товар</th>
               <th>Штрихкод</th>
               <th className="right">Заказано</th>
+              {showStock && <th className="right">На складе</th>}
               <th className="right">{o.status === 'new' ? 'К отгрузке' : 'Отгружается'}</th>
               <th className="right">Цена, {org.currency}</th>
               <th className="right">Сумма, {org.currency}</th>
@@ -138,11 +211,13 @@ export function OrderView() {
           <tbody>
             {items.map((i) => {
               const ship = shipQty(i);
+              const h = have(i);
               return (
-                <tr key={i.id} className={ship !== Number(i.qty) ? 'row-low' : ''}>
+                <tr key={i.id} className={h !== undefined && h < ship ? 'row-neg' : ship !== Number(i.qty) ? 'row-low' : ''}>
                   <td>{i.name}</td>
                   <td className="num">{i.barcode}</td>
                   <td className="right">{fmtQty(i.qty)} {i.unit}</td>
+                  {showStock && <td className="right">{h === undefined ? <span className="muted">без учёта</span> : fmtQty(h)}</td>}
                   <td className="right">
                     {editable ? (
                       <input className="num-input" value={edits[i.id] ?? String(Number(i.qty))} inputMode="decimal" aria-label={`К отгрузке: ${i.name}`}
@@ -157,7 +232,7 @@ export function OrderView() {
           </tbody>
           <tfoot>
             <tr>
-              <td colSpan={5}>Итого: позиций {items.filter((i) => shipQty(i) > 0).length}</td>
+              <td colSpan={showStock ? 6 : 5}>Итого: позиций {items.filter((i) => shipQty(i) > 0).length}</td>
               <td className="right">{money(total)}</td>
             </tr>
           </tfoot>

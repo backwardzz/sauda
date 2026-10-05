@@ -8,35 +8,180 @@ export const ROLE_LABEL: Record<Role, string> = {
   cashier: 'Кассир',
 };
 
+export interface City {
+  id: number;
+  name: string;
+  /** У городов республиканского значения области нет. */
+  region: string;
+}
+
+export type OrgKind = 'store' | 'company';
+
 export interface Org {
   id: string;
   name: string;
   currency: string;
   timezone: string;
-  /** Магазин ведёт учёт и кассу, поставщик — каталог и заказы магазинов. */
-  kind: 'store' | 'supplier';
+  /** Магазин ведёт учёт и кассу, компания — каталог, склад и заказы магазинов. */
+  kind: OrgKind;
   /** Чем торгует магазин. Аптека пока заглушка: отдельного учёта лекарств нет. */
   business: 'grocery' | 'pharmacy';
-  description: string;
   phone: string;
-  min_order: number;
-  delivery_note: string;
+  /** БИН или ИИН: 12 цифр либо пусто. */
+  bin: string;
+  email: string;
+  contact_name: string;
+  /** Логотип: ссылка https или сжатая картинка (data URL); пусто — инициалы. */
+  logo_url: string;
+  created_at: string;
 }
 
-export interface SupplierProduct {
+export type CompanyType = 'manufacturer' | 'distributor' | 'wholesaler';
+
+export const COMPANY_TYPE: Record<CompanyType, string> = {
+  manufacturer: 'Производитель',
+  distributor: 'Дистрибьютор',
+  wholesaler: 'Оптовая компания',
+};
+
+/** Витрина компании: чем торгует и на каких условиях. */
+export interface Company {
+  org_id: string;
+  company_type: CompanyType;
+  description: string;
+  website: string;
+  min_order: number;
+  delivery_note: string;
+  payment_terms: string;
+  /** Отметку «Подтверждённая компания» ставит администратор площадки. */
+  verified: boolean;
+  created_at: string;
+}
+
+/** Филиал компании: офис и склад в городе. */
+export interface Branch {
+  id: string;
+  org_id: string;
+  city_id: number;
+  name: string;
+  address: string;
+  phone: string;
+  manager_name: string;
+  work_hours: string;
+  is_main: boolean;
+  created_at: string;
+}
+
+/** Товар компании: то, что покупатель видит в каталоге. Продаются его виды. */
+export interface CompanyProduct {
   id: string;
   org_id: string;
   name: string;
+  category: string;
+  description: string;
+  /** Ссылка https на фото товара; пусто — фото нет. */
+  image_url: string;
+  archived: boolean;
+  created_at: string;
+}
+
+/** Вид товара: фасовка со своим штрихкодом, ценой и остатком. */
+export interface Variant {
+  id: string;
+  org_id: string;
+  product_id: string;
+  /** Подпись внутри товара: «0,5 л». У товара с одним видом может быть пустой. */
+  label: string;
   barcode: string;
   unit: Unit;
-  category: string;
   price: number;
   /** Кратность заказа: товар отпускается упаковками. */
   pack_qty: number;
-  /** Ссылка https на фото товара; пусто — фото нет. */
+  /** Своё фото вида; пусто — берётся фото товара. */
   image_url: string;
-  available: boolean;
+  /** В продаже: вид виден магазинам. */
+  active: boolean;
+  /** Остаток учитывается: заказать можно не больше свободного. */
+  track_stock: boolean;
+  min_stock: number | null;
+  sort: number;
   archived: boolean;
+}
+
+/** Строка функции company_stats: продажи и остатки одного вида. */
+export interface VariantStats {
+  variant_id: string;
+  /** Сумма по всем филиалам; null — остаток не учитывается. */
+  stock: number | null;
+  /** Заказано магазинами и ещё не отгружено. */
+  reserved: number;
+  sold_qty: number;
+  sold_sum: number;
+  sold_qty_30: number;
+  orders_count: number;
+  stores_count: number;
+  last_sold_at: string | null;
+}
+
+export interface StockMoveRow {
+  id: number;
+  branch_id: string;
+  variant_id: string;
+  delta: number;
+  qty_after: number;
+  reason: 'adjust' | 'import' | 'shipment';
+  order_id: string | null;
+  comment: string;
+  created_at: string;
+}
+
+export const STOCK_REASON: Record<StockMoveRow['reason'], string> = {
+  adjust: 'Правка остатка',
+  import: 'Загрузка прайса',
+  shipment: 'Отгрузка заказа',
+};
+
+/** Строка функции store_offers: вид товара компании глазами магазина. */
+export interface Offer {
+  variant_id: string;
+  company_id: string;
+  company_name: string;
+  min_order: number;
+  product_id: string;
+  product_name: string;
+  label: string;
+  category: string;
+  description: string;
+  image_url: string;
+  barcode: string;
+  unit: Unit;
+  price: number;
+  pack_qty: number;
+  /** Свободный остаток в филиале, который обслуживает магазин; null — без ограничения. */
+  free: number | null;
+  branch_id: string | null;
+  branch_name: string;
+  /** У компании есть филиал в городе магазина. */
+  local: boolean;
+}
+
+/** Строка функции company_directory: карточка компании на витрине. */
+export interface CompanyCard {
+  id: string;
+  name: string;
+  logo_url: string;
+  phone: string;
+  company_type: CompanyType;
+  description: string;
+  min_order: number;
+  delivery_note: string;
+  payment_terms: string;
+  verified: boolean;
+  products: number;
+  categories: string[];
+  images: string[];
+  cities: string[];
+  city_ids: number[];
 }
 
 export type OrderStatus = 'new' | 'confirmed' | 'shipped' | 'received' | 'canceled';
@@ -52,6 +197,7 @@ export const ORDER_STATUS: Record<OrderStatus, { label: string; badge: string }>
 export interface OrderItem {
   id: string;
   order_id: string;
+  variant_id: string | null;
   name: string;
   barcode: string;
   unit: string;
@@ -75,6 +221,11 @@ export interface Order {
   supplier_comment: string;
   total: number;
   supply_doc: string | null;
+  /** Филиал компании, который собирает заказ. */
+  branch_id: string | null;
+  branch_name: string;
+  store_city: string;
+  store_phone: string;
   created_at: string;
   confirmed_at: string | null;
   shipped_at: string | null;
@@ -86,6 +237,8 @@ export interface Store {
   org_id: string;
   name: string;
   address: string;
+  city_id: number | null;
+  phone: string;
 }
 
 export interface Register {
@@ -113,6 +266,8 @@ export interface Contractor {
   name: string;
   phone: string;
   comment: string;
+  /** Компания на площадке, с которой связан этот поставщик. */
+  partner_org_id: string | null;
 }
 
 export interface QuickGroup {

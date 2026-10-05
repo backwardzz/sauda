@@ -188,8 +188,10 @@ input[type='checkbox'] { width: 16px; height: 16px; accent-color: var(--accent);
 .chip { display: inline-flex; align-items: center; gap: 4px; padding: 3px 4px 3px 10px; border-radius: 999px; background: var(--accent-weak); color: var(--accent); font-size: 13px; }
 .chip button { display: grid; place-items: center; width: 18px; height: 18px; border: 0; border-radius: 50%; background: transparent; color: inherit; cursor: pointer; }
 .chip button:hover { background: rgba(75, 69, 224, 0.15); }
-.segmented { display: inline-flex; padding: 2px; border-radius: 7px; background: #e7e9f1; }
-.segmented button { height: 30px; padding: 0 12px; border: 0; border-radius: 5px; background: transparent; cursor: pointer; font-weight: 500; color: var(--muted); }
+/* на узком экране длинный переключатель прокручивается сам, а не растягивает страницу */
+.segmented { display: inline-flex; max-width: 100%; overflow-x: auto; padding: 2px; border-radius: 7px; background: #e7e9f1; }
+.segmented button { flex: none; height: 30px; padding: 0 12px; border: 0; border-radius: 5px; background: transparent; cursor: pointer; font-weight: 500; color: var(--muted); white-space: nowrap; }
+.toolbar select { max-width: 100%; }
 .segmented button.active { background: var(--surface); color: var(--text); box-shadow: 0 1px 2px rgba(20, 24, 40, 0.12); }
 .period { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .tabs { display: flex; gap: 2px; margin-bottom: 14px; border-bottom: 1px solid var(--line); overflow-x: auto; }
@@ -280,13 +282,13 @@ input[type='checkbox'] { width: 16px; height: 16px; accent-color: var(--accent);
 
 /* ── Каталог товаров и пакеты для нового магазина ── */
 .side-count { font-size: 12.5px; color: var(--muted); font-weight: 400; font-variant-numeric: tabular-nums; }
-.pack-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; align-items: start; }
 .pack-card.active { border-color: var(--accent); }
-.pack-head { display: flex; align-items: flex-start; gap: 10px; padding: 14px 16px 8px; cursor: pointer; }
-.pack-head input { margin-top: 2px; flex: none; }
-.pack-head b { display: block; font-size: 15px; }
-.pack-foot { display: flex; align-items: center; gap: 8px; padding: 0 8px 10px 42px; font-size: 13px; }
-.pack-items { max-height: 320px; overflow: auto; padding: 6px 16px 10px; border-top: 1px solid var(--line); }
+.pack-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 12px 16px; }
+.pack-head > input { flex: none; }
+.pack-title { display: flex; flex-direction: column; gap: 2px; min-width: 220px; padding: 0; border: 0; background: transparent; cursor: pointer; text-align: left; }
+.pack-title b { font-size: 15px; }
+.pack-meta { font-size: 13px; }
+.table-wrap.flush { border: 0; border-top: 1px solid var(--line); border-radius: 0 0 var(--radius) var(--radius); }
 /* фото товаров на белом фоне в одинаковой квадратной рамке с полями */
 .product-image { display: grid; place-items: center; flex: none; width: 100%; aspect-ratio: 1; padding: 12px; border-radius: 6px; background: #fff; color: var(--line-strong); overflow: hidden; }
 .product-image img { width: 100%; height: 100%; object-fit: contain; mix-blend-mode: multiply; }
@@ -316,6 +318,7 @@ input[type='checkbox'] { width: 16px; height: 16px; accent-color: var(--accent);
 
 /* ── Вход ── */
 .auth { min-height: 100%; display: grid; place-items: center; padding: 24px; }
+.auth-card.wide { max-width: 620px; }
 .auth-card { width: 100%; max-width: 400px; padding: 28px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow); }
 .auth-card .brand { margin: 0 0 6px; font-size: 20px; }
 .auth-card .brand-mark { width: 34px; height: 34px; font-size: 18px; }
@@ -360,8 +363,107 @@ input[type='checkbox'] { width: 16px; height: 16px; accent-color: var(--accent);
 .receipt .r-row { display: flex; justify-content: space-between; gap: 8px; }
 .receipt .r-total { font-size: 15px; font-weight: 700; }
 
+/* ── Выбор города, логотип ── */
+.combo { position: relative; }
+.combo > input { width: 100%; }
+.combo-list { position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 60; min-width: 240px; max-height: 280px; overflow: auto; padding: 4px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); }
+.combo-list button { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; width: 100%; padding: 7px 10px; border: 0; border-radius: 6px; background: transparent; cursor: pointer; text-align: left; }
+.combo-list button .muted { font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.combo-list button.active { background: var(--surface-2); }
+.combo-list button.selected { color: var(--accent); font-weight: 550; }
+.combo-empty { padding: 10px; color: var(--muted); }
+.logo-upload { display: flex; flex-direction: column; align-items: center; gap: 4px; flex: none; }
+.logo-button { position: relative; padding: 0; border: 0; border-radius: 50%; background: transparent; cursor: pointer; }
+.logo-button:hover .company-avatar { box-shadow: 0 0 0 3px var(--accent-weak); }
+.logo-badge { position: absolute; right: -2px; bottom: -2px; display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: var(--surface); border: 1px solid var(--line-strong); color: var(--muted); }
+
+/* ── Профиль и филиалы ── */
+.profile-head { display: flex; align-items: flex-start; gap: 18px; flex-wrap: wrap; padding: 18px; margin-bottom: 14px; }
+.profile-name { font-size: 20px; }
+.profile-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.kv.info { grid-template-columns: 170px 1fr; gap: 8px 0; }
+.kv.info dd { text-align: left; padding-left: 0; font-variant-numeric: normal; overflow-wrap: anywhere; }
+.list-row.flush { padding-left: 0; padding-right: 0; }
+.branch-city { margin-bottom: 14px; }
+.branch-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+.branch-card { display: flex; flex-direction: column; gap: 8px; padding: 14px; }
+.branch-lines { display: flex; flex-direction: column; gap: 4px; }
+.branch-lines span { display: flex; align-items: center; gap: 6px; }
+.branch-lines .icon { color: var(--muted); }
+.branch-foot { margin-top: auto; padding-top: 8px; border-top: 1px solid var(--line); font-size: 12.5px; gap: 14px; }
+.banner.warn { border-color: #e7c27d; background: var(--warn-weak); }
+
+/* ── Каталог компании: товар и его виды ── */
+.seg-count { margin-left: 6px; padding: 0 6px; border-radius: 999px; background: var(--warn-weak); color: var(--warn); font-size: 12px; font-weight: 600; }
+.product-grid.wide { grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); align-content: start; }
+.product-card.clickable { cursor: pointer; text-align: left; font: inherit; color: inherit; }
+.product-card.clickable:hover { border-color: var(--accent); box-shadow: var(--shadow); }
+.product-card.clickable .product-image { aspect-ratio: 4 / 3; }
+.variant-chips { display: flex; flex-wrap: wrap; gap: 4px; min-height: 22px; }
+.badge.off { text-decoration: line-through; opacity: 0.6; }
+.product-foot { margin-top: auto; gap: 6px; font-size: 12.5px; }
+.editor-top { display: flex; gap: 16px; align-items: flex-start; margin-bottom: 6px; }
+.editor-top > .product-image { width: 150px; border: 1px solid var(--line); }
+.variant-table td { padding-top: 6px; padding-bottom: 6px; }
+.variant-table input.cell-num { width: 86px; height: 30px; }
+.variant-table input.cell-label { width: 150px; height: 30px; }
+.variant-table input.cell-barcode { width: 150px; height: 30px; }
+.variant-table select { height: 30px; }
+.variant-table .input-group { align-items: center; gap: 2px; }
+/* редактор товара: столбцов много (по одному на филиал), поэтому ячейки уже, а заголовки переносятся */
+.variant-table.compact th { padding: 8px 6px; white-space: normal; line-height: 1.25; vertical-align: bottom; }
+.variant-table.compact td { padding: 5px 6px; }
+.variant-table.compact input.cell-num { width: 72px; }
+.variant-table.compact input.cell-label { width: 116px; }
+.variant-table.compact input.cell-barcode { width: 138px; }
+.variant-table.compact select { padding: 0 4px; }
+.table tr.row-off td { color: var(--muted); background: var(--surface-2); }
+.row.clickable { cursor: pointer; }
+.product-top { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 14px; margin-bottom: 4px; align-items: start; }
+.product-about { display: flex; flex-direction: column; gap: 10px; }
+.product-about .product-image { aspect-ratio: 4 / 3; border: 1px solid var(--line); }
+.stat-grid.tight { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); margin-bottom: 0; }
+.stat-hint { margin-top: 2px; font-size: 12.5px; color: var(--muted); }
+.stat.warn .stat-value { color: var(--warn); }
+.stat.danger .stat-value { color: var(--danger); }
+a.stat { color: inherit; }
+a.stat:hover { text-decoration: none; }
+
+/* ── Каталог компании глазами магазина и корзина ── */
+.company-about { display: flex; flex-wrap: wrap; gap: 6px 22px; padding: 12px 16px; margin-bottom: 12px; }
+.company-about > span { display: flex; align-items: center; gap: 6px; }
+.company-about > span .icon { color: var(--muted); }
+.company-about .wide { flex-basis: 100%; }
+.offer-list { display: flex; flex-direction: column; gap: 10px; }
+.offer-card { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 14px; padding: 12px 14px; align-items: start; }
+.offer-card.active { border-color: var(--accent); }
+.offer-card > .product-image { padding: 6px; border: 1px solid var(--line); }
+.offer-desc { margin-top: 2px; font-size: 13px; }
+.offer-variants { margin-top: 8px; border-top: 1px solid var(--line); }
+.offer-row { display: grid; grid-template-columns: minmax(140px, 1fr) 130px 150px 120px 136px 100px; gap: 10px; align-items: center; padding: 7px 6px; border-bottom: 1px solid var(--line); }
+.offer-row:last-child { border-bottom: 0; }
+.offer-row.selected { background: var(--accent-weak); }
+.offer-label { display: flex; flex-direction: column; min-width: 0; }
+.offer-label .muted { font-size: 12.5px; }
+.offer-price, .offer-sum { text-align: right; }
+.offer-row .qty-box input { width: 60px; height: 32px; flex: 1; min-width: 0; }
+.offer-cell { display: flex; flex-direction: column; gap: 2px; }
+.offer-cell select { height: 28px; max-width: 240px; }
+.offer-cell .muted { font-size: 12.5px; }
+.cart-group { margin-bottom: 14px; }
+.cart-group .table td { border-bottom: 1px solid var(--line); }
+.cart-foot { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 12px 16px; background: var(--surface-2); border-radius: 0 0 var(--radius) var(--radius); }
+.cart-btn { position: relative; width: 38px; padding: 0; }
+.cart-btn.active { border-color: var(--accent); color: var(--accent); }
+.cart-count { position: absolute; top: -6px; right: -6px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: var(--accent); color: #fff; font-size: 11px; font-weight: 650; line-height: 18px; text-align: center; }
+
 @media (max-width: 900px) {
-  .split, .dash-grid { grid-template-columns: 1fr; }
+  .split, .dash-grid, .product-top, .profile-grid { grid-template-columns: 1fr; }
+  .offer-card { grid-template-columns: 1fr; }
+  .offer-card > .product-image { width: 96px; }
+  .offer-row { grid-template-columns: 1fr auto; }
+  .offer-mine, .offer-stock, .offer-sum { display: none; }
+  .editor-top { flex-direction: column; }
   .side-list { max-height: 230px; }
   .form-grid { grid-template-columns: 1fr; }
   .pos-main { grid-template-columns: 1fr; overflow: auto; }

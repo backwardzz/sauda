@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { useCarts } from '../lib/cart';
 import { useSession } from '../lib/session';
 import { ROLE_LABEL } from '../lib/types';
+import { CompanyAvatar } from '../ui/CompanyAvatar';
 import { Icon } from '../ui/Icon';
 
 interface Section {
@@ -60,6 +62,7 @@ const MANAGER_NAV: Section[] = [
   {
     label: 'Управление',
     items: [
+      { label: 'Профиль магазина', to: '/profile' },
       { label: 'Пользователи', to: '/users' },
       { label: 'Кассы', to: '/registers' },
       { label: 'Торговые точки', to: '/stores' },
@@ -67,12 +70,13 @@ const MANAGER_NAV: Section[] = [
   },
 ];
 
-const SUPPLIER_NAV: Section[] = [
+const COMPANY_NAV: Section[] = [
   { label: 'Главная', to: '/' },
   { label: 'Заказы', to: '/orders' },
   { label: 'Каталог', to: '/catalog' },
+  { label: 'Склад', to: '/stock' },
   { label: 'Сотрудники', to: '/users' },
-  { label: 'Профиль компании', to: '/company' },
+  { label: 'Профиль компании', to: '/profile' },
 ];
 
 const CASHIER_NAV: Section[] = [
@@ -86,6 +90,7 @@ export function Layout() {
   const bar = useRef<HTMLElement>(null);
   const location = useLocation();
   const navigate = useNavigate();
+  const cart = useCarts(store?.id ?? '');
 
   useEffect(() => setOpen(null), [location.pathname]);
   useEffect(() => {
@@ -96,9 +101,11 @@ export function Layout() {
     return () => window.removeEventListener('mousedown', close);
   }, []);
 
-  const isSupplier = org?.kind === 'supplier';
-  const nav = isSupplier ? SUPPLIER_NAV : canManage ? MANAGER_NAV : CASHIER_NAV;
+  const isCompany = org?.kind === 'company';
+  const nav = isCompany ? COMPANY_NAV : canManage ? MANAGER_NAV : CASHIER_NAV;
   const name = (user?.user_metadata?.full_name as string) || user?.email || '';
+  // «Каталог» компании подсвечен и на карточке товара
+  const exact = (to: string) => to === '/';
 
   return (
     <div className="app">
@@ -106,7 +113,7 @@ export function Layout() {
         <Link to="/" className="brand"><span className="brand-mark">S</span>Sauda</Link>
         {nav.map((s) =>
           s.to ? (
-            <NavLink key={s.label} to={s.to} end className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
+            <NavLink key={s.label} to={s.to} end={exact(s.to)} className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
               {s.label}
             </NavLink>
           ) : (
@@ -132,32 +139,39 @@ export function Layout() {
           ),
         )}
         <span className="spacer" />
-        {!isSupplier && canManage && (
-          <div className="nav-item">
-            <button
-              className={`btn accent ${['/catalog', '/market'].some((p) => location.pathname.startsWith(p)) ? 'active' : ''}`}
-              onClick={() => setOpen(open === 'catalog' ? null : 'catalog')}
-              aria-expanded={open === 'catalog'}
-            >
-              <Icon name="layers" size={16} />
-              Каталог товаров
-              <Icon name="down" size={14} />
-            </button>
-            {open === 'catalog' && (
-              <div className="nav-menu">
-                <NavLink to="/catalog" end className={({ isActive }) => (isActive ? 'active' : '')}>Каталог товаров</NavLink>
-                <NavLink to="/market" className={({ isActive }) => (isActive ? 'active' : '')}>Поставщики и каталоги</NavLink>
-              </div>
-            )}
-          </div>
+        {!isCompany && canManage && (
+          <>
+            <div className="nav-item">
+              <button
+                className={`btn accent ${['/catalog', '/market'].some((p) => location.pathname.startsWith(p)) ? 'active' : ''}`}
+                onClick={() => setOpen(open === 'catalog' ? null : 'catalog')}
+                aria-expanded={open === 'catalog'}
+              >
+                <Icon name="layers" size={16} />
+                Каталог товаров
+                <Icon name="down" size={14} />
+              </button>
+              {open === 'catalog' && (
+                <div className="nav-menu">
+                  <NavLink to="/catalog" end className={({ isActive }) => (isActive ? 'active' : '')}>Каталог товаров</NavLink>
+                  <NavLink to="/market" className={({ isActive }) => (isActive ? 'active' : '')}>Компании и каталоги</NavLink>
+                  <NavLink to="/catalog/starter" className={({ isActive }) => (isActive ? 'active' : '')}>У меня новый магазин</NavLink>
+                </div>
+              )}
+            </div>
+            <Link to="/cart" className={`btn cart-btn ${location.pathname === '/cart' ? 'active' : ''}`} aria-label={`Корзина: товаров ${cart.count}`} title="Корзина заказов компаниям">
+              <Icon name="cart" size={16} />
+              {cart.count > 0 && <span className="cart-count">{cart.count}</span>}
+            </Link>
+          </>
         )}
-        {!isSupplier && (
+        {!isCompany && (
           <button className="btn primary" onClick={() => navigate('/pos')}>
-            <Icon name="cart" size={16} />
+            <Icon name="cash" size={16} />
             Касса
           </button>
         )}
-        {!isSupplier && stores.length > 1 && (
+        {!isCompany && stores.length > 1 && (
           <select value={store?.id ?? ''} onChange={(e) => setStoreId(e.target.value)} aria-label="Торговая точка">
             {stores.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
           </select>
@@ -169,17 +183,26 @@ export function Layout() {
           </button>
           {open === 'user' && (
             <div className="nav-menu" style={{ left: 'auto', right: 0 }}>
-              <div style={{ padding: '6px 10px 8px' }}>
-                <div><b>{org?.name}</b></div>
-                <div className="muted">{isSupplier ? 'Поставщик' : org?.business === 'pharmacy' ? `Аптека · ${store?.name}` : store?.name} · {role ? ROLE_LABEL[role] : ''}</div>
-                <div className="muted">{user?.email}</div>
+              <div className="row" style={{ padding: '6px 10px 8px', alignItems: 'flex-start' }}>
+                <CompanyAvatar name={org?.name ?? ''} logo={org?.logo_url} size={36} />
+                <div>
+                  <div><b>{org?.name}</b></div>
+                  <div className="muted">{isCompany ? 'Компания' : org?.business === 'pharmacy' ? `Аптека · ${store?.name}` : store?.name} · {role ? ROLE_LABEL[role] : ''}</div>
+                  <div className="muted">{user?.email}</div>
+                </div>
               </div>
+              {(isCompany || canManage) && (
+                <button className="menu-item" onClick={() => navigate('/profile')}>
+                  <Icon name={isCompany ? 'building' : 'store'} size={16} />
+                  {isCompany ? 'Профиль компании' : 'Профиль магазина'}
+                </button>
+              )}
               {memberships.length > 1 &&
                 memberships.filter((m) => m.org.id !== org?.id).map((m) => (
                   <button key={m.org.id} className="menu-item" onClick={() => setOrgId(m.org.id)}>
                     <Icon name="swap" size={16} />
                     {m.org.name}
-                    <span className="muted">{m.org.kind === 'supplier' ? 'поставщик' : 'магазин'}</span>
+                    <span className="muted">{m.org.kind === 'company' ? 'компания' : 'магазин'}</span>
                   </button>
                 ))}
               <button className="menu-item" onClick={signOut}>

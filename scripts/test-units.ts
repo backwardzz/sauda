@@ -1,9 +1,12 @@
 // Проверки чистых функций: без базы и без браузера.
 import { grade } from '../src/lib/abc';
 import { generateBarcode } from '../src/lib/barcode';
-import { markupPct, marginPct, parseNum, round2, round3 } from '../src/lib/format';
+import { bestOffer, clampQty, suggestQty } from '../src/lib/cart';
+import { formatPhone, markupPct, marginPct, parseNum, plural, round2, round3 } from '../src/lib/format';
 import { parseImport } from '../src/lib/importParse';
 import { decodeInvoice, encodeInvoice, invoiceUnit } from '../src/lib/invoice';
+import type { Offer } from '../src/lib/types';
+import { fullName, splitName } from '../src/lib/variants';
 import { periodRange } from '../src/ui/Period';
 
 let failed = 0;
@@ -58,6 +61,7 @@ eq('строки без названия или штрихкода пропущ�
 eq('первая строка', parsed.items[0], {
   name: 'Dizzy original 0.33л', barcode: '4870204391510', extra_barcodes: ['4870204392647', '4870204392708'], unit: 'шт',
   purchase_price: 417, sale_price: 550, wholesale_price: null, category: 'Напитки', subcategory: null, supplier: 'Макси чай', qty: 3977,
+  product: null, label: null, pack_qty: null, price: null,
 });
 eq('весовой товар', [parsed.items[1].unit, parsed.items[1].qty, parsed.items[1].extra_barcodes], ['кг', 292.276, ['1190']]);
 const minimal = parseImport([['Наименование', 'Barcode'], ['Хлеб', '111 222']]);
@@ -97,6 +101,45 @@ let bad = false;
 try { decodeInvoice('%%%'); } catch { bad = true; }
 eq('повреждённая ссылка отклонена', bad, true);
 eq('единицы накладной', ['бут', 'кг.', 'Литр', 'пач', 'м'].map(invoiceUnit), ['шт', 'кг', 'л', 'шт', 'м']);
+
+console.log('Товар и его виды');
+const split = (name: string) => { const p = splitName(name); return [p.product, p.label]; };
+eq('размер в конце названия', split('Вода питьевая 0,5 л'), ['Вода питьевая', '0,5 л']);
+eq('размер слитно и с упаковкой', split('Coca cola 0.45л ж/б'), ['Coca cola', '0.45л ж/б']);
+eq('процент жирности — не размер', split('Молоко 3,2% 1 л'), ['Молоко 3,2%', '1 л']);
+eq('граммы и «гр»', [split('Мыло Absolut 90гр'), split('Йогурт Alpenland 2.5% 95г')], [['Мыло Absolut', '90гр'], ['Йогурт Alpenland 2.5%', '95г']]);
+eq('вид начинается с первого размера', split('Набор кружек 2 шт 300 мл'), ['Набор кружек', '2 шт 300 мл']);
+eq('без размера вид пустой', split('  Сыр   твёрдый '), ['Сыр твёрдый', '']);
+eq('буква после числа — не единица', [split('5 минут каша'), split('Сигареты Kent 4')], [['5 минут каша', ''], ['Сигареты Kent 4', '']]);
+eq('название из одного размера не делится', split('0,5 л'), ['0,5 л', '']);
+eq('товар и вид складываются обратно', ['Coca cola 0.5л', 'Сыр твёрдый'].map((n) => fullName(splitName(n).product, splitName(n).label)), ['Coca cola 0.5л', 'Сыр твёрдый']);
+
+console.log('Прайс компании');
+const priceList = parseImport([
+  ['Название', 'Товар', 'Вид', 'Штрихкод', 'Ед. изм', 'Продажная цена', 'Категория', 'В упаковке', 'Остаток'],
+  ['Кола 0,5 л', 'Кола', '0,5 л', '4870000000011', 'шт', 200, 'Напитки', 12, 240],
+  ['Хлеб', 'Хлеб', '', '4870000000028', 'шт', 120, 'Выпечка', 1, ''],
+]);
+eq('выгрузка каталога компании читается обратно', [priceList.items[0].product, priceList.items[0].label, priceList.items[0].pack_qty, priceList.items[0].qty], ['Кола', '0,5 л', 12, 240]);
+eq('товар с одним видом: вид пустой, остаток не задан', [priceList.items[1].product, priceList.items[1].label, priceList.items[1].qty], ['Хлеб', '', null]);
+const simple = parseImport([['Товар', 'Штрихкод', 'Цена', 'Кол-во в упаковке'], ['Сок яблочный 1 л', '111', '520 тг', 6]]);
+eq('простой прайс: «Товар» — это название, «Цена» — цена, упаковка не путается с остатком',
+  [simple.items[0].name, simple.items[0].product, simple.items[0].price, simple.items[0].pack_qty, simple.items[0].qty], ['Сок яблочный 1 л', null, 520, 6, null]);
+const pair = parseImport([['Товар', 'Вид', 'Штрихкод'], ['Кола', '1 л', '222']]);
+eq('без «Названия» название складывается из товара и вида', [pair.items[0].name, pair.items[0].product, pair.items[0].label], ['Кола 1 л', 'Кола', '1 л']);
+
+console.log('Корзина и предложения');
+const offer = (o: Partial<Offer>) => ({ price: 100, free: null, local: false, pack_qty: 1, ...o }) as Offer;
+eq('количество не больше свободного остатка', [clampQty(30, offer({ free: 24 })), clampQty(30, offer({})), clampQty(-5, offer({})), clampQty(0.1 + 0.2, offer({}))], [24, 30, 0, 0.3]);
+eq('лучшее предложение: сначала в наличии', bestOffer([offer({ variant_id: 'a', price: 90, free: 0 }), offer({ variant_id: 'b', price: 110 })])?.variant_id, 'b');
+eq('лучшее предложение: свой город важнее цены', bestOffer([offer({ variant_id: 'a', price: 90 }), offer({ variant_id: 'b', price: 95, local: true })])?.variant_id, 'b');
+eq('лучшее предложение: при прочих равных дешевле', bestOffer([offer({ variant_id: 'a', price: 95 }), offer({ variant_id: 'b', price: 90 })])?.variant_id, 'b');
+eq('предложений нет', bestOffer([]), undefined);
+eq('дозаказ до двойного критического, упаковками', [suggestQty(3, 10, 6), suggestQty(25, 10, 6), suggestQty(0, 5, 1)], [18, 0, 10]);
+
+console.log('Телефон и склонения');
+eq('номер приводится к единому виду', ['87010001122', '7010001122', '+7 (701) 000-11-22', ' 12345 '].map(formatPhone), ['+7 701 000 11 22', '+7 701 000 11 22', '+7 701 000 11 22', '12345']);
+eq('склонения', [1, 2, 5, 11, 21, 104].map((n) => plural(n, 'товар', 'товара', 'товаров')), ['товар', 'товара', 'товаров', 'товаров', 'товар', 'товара']);
 
 console.log('Период');
 const range = periodRange({ from: '2026-10-01', to: '2026-10-03' });

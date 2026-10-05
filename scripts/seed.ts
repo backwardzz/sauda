@@ -2,6 +2,7 @@
 // Запуск: npm run seed. Логин и пароль демо-аккаунта лежат в .env.local (DEMO_EMAIL, DEMO_PASSWORD).
 import { createClient } from '@supabase/supabase-js';
 import { readFileSync } from 'node:fs';
+import { splitName } from '../src/lib/variants';
 
 const env = Object.fromEntries(
   readFileSync(new URL('../.env.local', import.meta.url), 'utf8')
@@ -18,7 +19,7 @@ if (!env.DEMO_EMAIL || !env.DEMO_PASSWORD || !env.SUPABASE_SERVICE_ROLE_KEY) {
 }
 
 const db = createClient(url, env.VITE_SUPABASE_ANON_KEY, { auth: { persistSession: false } });
-// второй демо-вход — торговый представитель: владеет компаниями-поставщиками. Пароль тот же, что у магазина.
+// второй демо-вход владеет компаниями. Пароль тот же, что у магазина.
 const REP_EMAIL = 'rep@sauda.test';
 const rep = createClient(url, env.VITE_SUPABASE_ANON_KEY, { auth: { persistSession: false } });
 const admin = createClient(url, env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
@@ -117,11 +118,15 @@ async function main() {
     for (const m of existing) await must(admin.from('orgs').delete().eq('id', m.org_id));
   }
 
-  const org = await must(db.rpc('create_org', { p_name: 'Демо-магазин', p_store: 'Магазин на Абая' }));
+  const cities = (await must(db.from('cities').select('id, name'))) as { id: number; name: string }[];
+  const city = (name: string) => cities.find((c) => c.name === name)!.id;
+  const org = await must(db.rpc('create_org', {
+    p_name: 'Демо-магазин', p_store: 'Магазин на Абая', p_city: city('Алматы'),
+    p_profile: { phone: '+7 701 555 10 10', address: 'пр. Абая, 10', email: env.DEMO_EMAIL, contact_name: 'Айгерим Демо' },
+  }));
   const store = (await must(db.from('stores').select('id').eq('org_id', org)))[0].id;
-  await must(db.from('stores').update({ address: 'г. Алматы, пр. Абая, 10' }).eq('id', store));
   const register = (await must(db.from('registers').select('id').eq('org_id', org)))[0].id;
-  const warehouse = (await must(db.from('stores').insert({ org_id: org, name: 'Склад на Толе би', address: 'г. Алматы, ул. Толе би, 120' }).select().single())).id;
+  const warehouse = (await must(db.from('stores').insert({ org_id: org, name: 'Склад на Толе би', city_id: city('Алматы'), address: 'ул. Толе би, 120' }).select().single())).id;
   /** Документ проведён «сейчас»: переносим его на нужный день и час демо-периода. */
   const backdate = async (doc: string, day: Date, hour: number) => {
     const at = new Date(day);
@@ -273,56 +278,134 @@ async function main() {
   const draft = await must(db.rpc('create_stock_doc', { p_store: store, p_kind: 'inventory', p_comment: 'Напитки, начали считать' }));
   for (const p of products.slice(0, 4)) await must(db.rpc('set_stock_doc_item', { p_doc: draft, p_product: p.id, p_qty: Math.max(p.stock - 1, 0) }));
 
-  // ── Поставщики на площадке: каталоги и заказы в разных статусах ──
+  // ── Компании на площадке: профили, филиалы, каталоги с видами и остатками, заказы в разных статусах ──
   if ((await rep.auth.signInWithPassword({ email: REP_EMAIL, password: env.DEMO_PASSWORD })).error) {
     const up = await rep.auth.signUp({ email: REP_EMAIL, password: env.DEMO_PASSWORD, options: { data: { full_name: 'Данияр Торговый' } } });
     if (up.error) throw up.error;
   }
-  for (const m of await must(rep.from('org_members').select('org_id'))) await must(admin.from('orgs').delete().eq('id', m.org_id));
+  // пересоздаются только компании этого сидера: демо-компании с известными марками (seed:brands) остаются
+  const mine = (await must(rep.from('org_members').select('org_id, orgs(name)'))) as { org_id: string; orgs: { name: string } | null }[];
 
-  const SUPPLIERS: [contractor: string, profile: Record<string, unknown>, extra: [string, string, number, number, string][]][] = [
-    ['ТОО «Напитки Азии»', { description: 'Вода, соки, газировка и энергетики. Прямые поставки с завода.', phone: '+7 701 000 11 22', min_order: 15000, delivery_note: 'Доставка пн, ср, пт. Заказ до 17:00 накануне' },
-      [['Морс клюквенный 1 л', 'шт', 480, 6, 'Соки'], ['Вода газированная 0,5 л', 'шт', 95, 12, 'Вода'], ['Лимонад «Дюшес» 1,5 л', 'шт', 390, 6, 'Газировка']]],
-    ['ТОО «Молочный двор»', { description: 'Молоко, кефир, сметана, творог и сыр собственного производства.', phone: '+7 702 000 33 44', min_order: 10000, delivery_note: 'Привозим каждый день до 9:00' },
-      [['Йогурт питьевой клубника 290 г', 'шт', 310, 8, 'Йогурты'], ['Ряженка 4% 450 г', 'шт', 360, 6, 'Кисломолочные'], ['Айран 1 л', 'шт', 420, 6, 'Кисломолочные']]],
-    ['ТОО «Сладкий мир»', { description: 'Шоколад, печенье, конфеты и снеки от ведущих производителей.', phone: '+7 705 000 55 66', min_order: 20000, delivery_note: 'Доставка по вторникам и четвергам' },
-      [['Вафли шоколадные 200 г', 'шт', 340, 10, 'Печенье и вафли'], ['Мармелад жевательный 80 г', 'шт', 190, 20, 'Конфеты'], ['Батончик ореховый 45 г', 'шт', 150, 24, 'Шоколад']]],
-  ];
-  const supplierOrgs: { id: string; items: { id: string; barcode: string; price: number; pack_qty: number }[] }[] = [];
-  for (const [contractor, profile, extra] of SUPPLIERS) {
-    const supOrg = await must(rep.rpc('create_org', { p_name: contractor, p_kind: 'supplier' }));
-    await must(rep.from('orgs').update(profile).eq('id', supOrg));
-    const cid = contractorByName.get(contractor)!;
-    const category = CATALOG.find(([, sName]) => sName === contractor)![0];
-    await must(rep.rpc('import_supplier_products', {
-      p_org: supOrg,
-      p_rows: [
-        // те же штрихкоды, что в демо-магазине: магазин видит свои остатки рядом с ценой поставщика
-        ...products.filter((p) => p.supplier_id === cid).map((p) => ({ name: (p as unknown as { name: string }).name, barcode: (p as unknown as { barcode: string }).barcode, unit: p.unit, price: p.buy, category, pack_qty: p.unit === 'кг' ? 1 : 6 })),
-        ...extra.map(([name, unit, price, pack, cat]) => ({ name, barcode: barcode(n++, unit), unit, price, category: cat, pack_qty: pack })),
+  interface Demo {
+    name: string;
+    type: 'manufacturer' | 'distributor' | 'wholesaler';
+    profile: { phone: string; address: string; description: string };
+    terms: { min_order: number; delivery_note: string; payment_terms: string; website: string };
+    /** филиалы кроме главного офиса в Алматы */
+    branches: { city: string; name: string; address: string; phone: string; manager_name: string; work_hours: string }[];
+    extra: [name: string, unit: string, price: number, pack: number, category: string][];
+  }
+  const COMPANIES: Demo[] = [
+    {
+      name: 'ТОО «Напитки Азии»', type: 'manufacturer',
+      profile: { phone: '+7 701 000 11 22', address: 'ул. Рыскулова, 57', description: 'Вода, соки, газировка и энергетики. Прямые поставки с завода.' },
+      terms: { min_order: 15000, delivery_note: 'Доставка пн, ср, пт. Заказ до 17:00 накануне', payment_terms: 'Наличными или переводом при получении', website: 'https://napitki-azii.example' },
+      branches: [
+        { city: 'Астана', name: 'Филиал в Астане', address: 'ш. Алаш, 24', phone: '+7 701 000 11 33', manager_name: 'Ерлан Сапаров', work_hours: 'пн–сб, 9:00–18:00' },
+        { city: 'Шымкент', name: 'Филиал в Шымкенте', address: 'Тамерлановское ш., 99', phone: '+7 701 000 11 44', manager_name: 'Бауыржан Нурлыбек', work_hours: 'пн–пт, 9:00–18:00' },
       ],
+      extra: [
+        ['Морс клюквенный 1 л', 'шт', 480, 6, 'Соки'], ['Вода газированная 0,5 л', 'шт', 95, 12, 'Вода'], ['Вода газированная 1,5 л', 'шт', 170, 6, 'Вода'],
+        ['Вода питьевая 5 л', 'шт', 390, 2, 'Напитки'], ['Лимонад «Дюшес» 0,5 л', 'шт', 210, 12, 'Газировка'], ['Лимонад «Дюшес» 1,5 л', 'шт', 390, 6, 'Газировка'],
+        ['Газировка кола 1,5 л', 'шт', 690, 6, 'Напитки'], ['Газировка кола 2 л', 'шт', 820, 6, 'Напитки'], ['Сок яблочный 0,2 л', 'шт', 150, 27, 'Напитки'], ['Сок яблочный 2 л', 'шт', 940, 6, 'Напитки'],
+      ],
+    },
+    {
+      name: 'ТОО «Молочный двор»', type: 'manufacturer',
+      profile: { phone: '+7 702 000 33 44', address: 'ул. Бекмаханова, 96', description: 'Молоко, кефир, сметана, творог и сыр собственного производства.' },
+      terms: { min_order: 10000, delivery_note: 'Привозим каждый день до 9:00', payment_terms: 'Отсрочка 7 дней для постоянных клиентов', website: '' },
+      branches: [{ city: 'Конаев', name: 'Склад в Конаеве', address: 'ул. Индустриальная, 3', phone: '+7 702 000 33 55', manager_name: 'Гульнар Ахметова', work_hours: 'ежедневно, 6:00–15:00' }],
+      extra: [
+        ['Йогурт питьевой клубника 290 г', 'шт', 310, 8, 'Йогурты'], ['Йогурт питьевой клубника 450 г', 'шт', 440, 6, 'Йогурты'], ['Ряженка 4% 450 г', 'шт', 360, 6, 'Кисломолочные'],
+        ['Айран 0,5 л', 'шт', 240, 12, 'Кисломолочные'], ['Айран 1 л', 'шт', 420, 6, 'Кисломолочные'], ['Молоко 3,2% 0,5 л', 'шт', 250, 12, 'Молочные продукты'], ['Сметана 20% 200 г', 'шт', 340, 12, 'Молочные продукты'],
+      ],
+    },
+    {
+      name: 'ТОО «Сладкий мир»', type: 'distributor',
+      profile: { phone: '+7 705 000 55 66', address: 'пр. Суюнбая, 153', description: 'Шоколад, печенье, конфеты и снеки от ведущих производителей.' },
+      terms: { min_order: 20000, delivery_note: 'Доставка по вторникам и четвергам', payment_terms: 'Оплата при получении', website: '' },
+      branches: [{ city: 'Караганда', name: 'Филиал в Караганде', address: 'ул. Складская, 8', phone: '+7 705 000 55 77', manager_name: 'Асель Жумабаева', work_hours: 'пн–пт, 9:00–18:00' }],
+      extra: [
+        ['Вафли шоколадные 200 г', 'шт', 340, 10, 'Печенье и вафли'], ['Мармелад жевательный 80 г', 'шт', 190, 20, 'Конфеты'], ['Батончик ореховый 45 г', 'шт', 150, 24, 'Шоколад'],
+        ['Шоколад молочный 200 г', 'шт', 950, 10, 'Снеки и сладости'], ['Чипсы картофельные 150 г', 'шт', 640, 12, 'Снеки и сладости'],
+      ],
+    },
+  ];
+
+  type Item = { id: string; name: string; barcode: string; price: number; pack_qty: number };
+  const companyOrgs: { id: string; main: string; items: Item[] }[] = [];
+  for (const c of COMPANIES) {
+    for (const m of mine.filter((x) => x.orgs?.name === c.name)) await must(admin.from('orgs').delete().eq('id', m.org_id));
+    const id = (await must(rep.rpc('create_org', {
+      p_name: c.name, p_kind: 'company', p_city: city('Алматы'),
+      p_profile: { ...c.profile, company_type: c.type, email: REP_EMAIL, contact_name: 'Данияр Торговый' },
+    }))) as string;
+    await must(rep.from('companies').update(c.terms).eq('org_id', id));
+    for (const b of c.branches) {
+      await must(rep.from('company_branches').insert({ org_id: id, city_id: city(b.city), name: b.name, address: b.address, phone: b.phone, manager_name: b.manager_name, work_hours: b.work_hours }));
+    }
+    const branches = (await must(rep.from('company_branches').select('id, is_main').eq('org_id', id).order('created_at'))) as { id: string; is_main: boolean }[];
+    const main = branches.find((b) => b.is_main)!.id;
+
+    const cid = contractorByName.get(c.name)!;
+    const category = CATALOG.find(([, sName]) => sName === c.name)![0];
+    const rows = [
+      // те же штрихкоды, что в демо-магазине: магазин видит свои остатки рядом с ценой компании
+      ...products.filter((p) => p.supplier_id === cid).map((p) => ({ name: (p as unknown as { name: string }).name, barcode: (p as unknown as { barcode: string }).barcode, unit: p.unit, price: p.buy, category, pack_qty: p.unit === 'кг' ? 1 : 6 })),
+      ...c.extra.map(([name, unit, price, pack, cat]) => ({ name, barcode: barcode(n++, unit), unit, price, category: cat, pack_qty: pack })),
+    ];
+    await must(rep.rpc('import_company_products', {
+      p_org: id,
+      // размер в названии становится видом товара: «Вода питьевая 0,5 л» и «5 л» — один товар; на главном складе 20–60 упаковок
+      p_rows: rows.map((r) => ({ ...splitName(r.name), barcode: r.barcode, unit: r.unit, price: r.price, category: r.category, pack_qty: r.pack_qty, stock: r.pack_qty * int(20, 60) })),
     }));
-    await must(admin.from('contractors').update({ partner_org_id: supOrg }).eq('id', cid));
-    supplierOrgs.push({ id: supOrg, items: await must(rep.from('supplier_products').select('id, barcode, price, pack_qty').eq('org_id', supOrg).order('name')) });
+    await must(admin.from('contractors').update({ partner_org_id: id }).eq('id', cid));
+
+    const variants = (await must(rep.from('company_variants').select('id, label, barcode, price, pack_qty, company_products(name)').eq('org_id', id))) as
+      { id: string; label: string; barcode: string; price: number; pack_qty: number; company_products: { name: string } }[];
+    const items = variants
+      .map((v) => ({ id: v.id, name: `${v.company_products.name} ${v.label}`.trim(), barcode: v.barcode, price: v.price, pack_qty: v.pack_qty }))
+      .sort((x, y) => x.name.localeCompare(y.name, 'ru'));
+    // в остальных филиалах запас меньше и не по всем товарам
+    for (const b of branches.filter((x) => !x.is_main)) {
+      for (const v of items.filter((_, k) => k % 3 !== 2)) {
+        await must(rep.rpc('set_company_stock', { p_variant: v.id, p_branch: b.id, p_qty: Number(v.pack_qty) * int(4, 15) }));
+      }
+    }
+    // начальные остатки появились до первых заказов: история склада читается по порядку
+    await must(admin.from('company_stock_moves').update({ created_at: new Date(Date.now() - 14 * 86400_000).toISOString() }).eq('org_id', id));
+    companyOrgs.push({ id, main, items });
   }
 
-  // заказы демо-магазина: принятый, отгруженный (можно принимать), подтверждённый и новый
+  // заказы демо-магазина: принятые (история продаж компаний), отгруженный (можно принимать), подтверждённый и новый
   const order = async (sup: number, picks: [number, number][], comment: string, daysAgo: number, to: 'new' | 'confirmed' | 'shipped' | 'received') => {
-    const cat = supplierOrgs[sup];
-    const id = await must(db.rpc('place_order', { p_store: store, p_supplier: cat.id, p_comment: comment, p_items: picks.map(([i, packs]) => ({ product_id: cat.items[i].id, qty: packs * Number(cat.items[i].pack_qty) })) }));
+    const cat = companyOrgs[sup];
+    const id = await must(db.rpc('place_order', { p_store: store, p_supplier: cat.id, p_comment: comment, p_items: picks.map(([i, packs]) => ({ variant_id: cat.items[i].id, qty: packs * Number(cat.items[i].pack_qty) })) }));
     if (to !== 'new') await must(rep.rpc('set_order_status', { p_order: id, p_status: 'confirmed', p_comment: 'Привезём в ближайшую доставку' }));
     if (to === 'shipped' || to === 'received') await must(rep.rpc('set_order_status', { p_order: id, p_status: 'shipped' }));
     if (to === 'received') await must(db.rpc('post_stock_doc_draft', { p_doc: await must(db.rpc('receive_order', { p_order: id })) }));
     const at = new Date(Date.now() - daysAgo * 86400_000).toISOString();
-    await must(admin.from('orders').update({ created_at: at, ...(to !== 'new' ? { confirmed_at: at } : {}) }).eq('id', id));
+    const sent = to === 'shipped' || to === 'received';
+    await must(admin.from('orders').update({ created_at: at, ...(to !== 'new' ? { confirmed_at: at } : {}), ...(sent ? { shipped_at: at } : {}) }).eq('id', id));
+    await must(admin.from('company_stock_moves').update({ created_at: at }).eq('order_id', id));
   };
-  await order(1, [[0, 4], [1, 3], [3, 2], [5, 2]], 'Как обычно, к открытию', 5, 'received');
+  await order(1, [[0, 4], [1, 3], [3, 2], [5, 2]], 'Как обычно, к открытию', 12, 'received');
+  await order(0, [[0, 6], [2, 5], [5, 4], [9, 3]], '', 9, 'received');
+  await order(2, [[0, 4], [1, 3], [3, 4], [6, 2]], '', 6, 'received');
+  await order(1, [[0, 5], [2, 4], [6, 3], [8, 2]], 'Как обычно, к открытию', 5, 'received');
   await order(0, [[0, 5], [1, 5], [2, 4], [4, 6], [7, 4]], 'Разгрузка со двора', 1, 'shipped');
   await order(2, [[0, 6], [2, 4], [4, 5], [6, 3], [7, 2]], '', 1, 'confirmed');
   await order(1, [[0, 6], [2, 4], [4, 3], [6, 2]], 'Нужно до пятницы', 0, 'new');
 
-  // один товар закончился у поставщика: в каталоге он виден, но заказать нельзя
-  await must(admin.from('supplier_products').update({ available: false }).eq('org_id', supplierOrgs[2].id).eq('name', 'Мармелад жевательный 80 г'));
+  // один товар закончился у компании: в каталоге он виден, но заказать нельзя; у каждой компании по виду на исходе
+  const sweets = companyOrgs[2];
+  const soldOut = sweets.items.find((i) => i.name === 'Шоколад молочный 200 г')!;
+  await must(rep.rpc('set_company_stock', { p_variant: soldOut.id, p_branch: sweets.main, p_qty: 0, p_comment: 'Ждём поставку' }));
+  for (const [k, c] of companyOrgs.entries()) {
+    const v = c.items[c.items.length - 1 - k];
+    await must(rep.from('company_variants').update({ min_stock: Number(v.pack_qty) * 5 }).eq('id', v.id));
+    await must(rep.rpc('set_company_stock', { p_variant: v.id, p_branch: c.main, p_qty: Number(v.pack_qty) * 3 }));
+  }
 
   // пара товаров на критическом остатке: на них видно «Заказать всё, что заканчивается»
   for (const [name, min] of [['Сметана 20% 400 г', 12], ['Молоко 3,2% 1 л', 30], ['Вода питьевая 1,5 л', 200]] as const) {
@@ -330,7 +413,7 @@ async function main() {
   }
 
   await addDevUser();
-  console.log(`Поставщики: ${SUPPLIERS.length} компании с каталогами и 4 заказа. Вход торгового представителя: ${REP_EMAIL}, пароль тот же`);
+  console.log(`Компании: ${COMPANIES.length} с филиалами, каталогами, остатками и 7 заказами. Вход компании: ${REP_EMAIL}, пароль тот же`);
   console.log(`Готово: «Демо-магазин», товаров ${products.length + 1}, продажи за ${DAYS} дней. Вход: ${env.DEMO_EMAIL}, пароль в .env.local`);
 }
 
