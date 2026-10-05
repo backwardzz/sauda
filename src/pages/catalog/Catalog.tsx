@@ -5,6 +5,7 @@ import { useWorkspace } from '../../lib/session';
 import { db, q } from '../../lib/supabase';
 import type { CatalogItem } from '../../lib/starter';
 import { Pager } from '../../ui/DataTable';
+import { CompanyAvatar, VerifiedBadge } from '../../ui/CompanyAvatar';
 import { Icon } from '../../ui/Icon';
 import { toast } from '../../ui/toast';
 
@@ -14,7 +15,16 @@ interface CategoryRow {
   cnt: number;
 }
 
-type Row = CatalogItem & { total: number };
+type Row = CatalogItem & { company: string; total: number };
+
+interface CompanyRow {
+  /** пустая строка — товары без распознанного производителя («Другие») */
+  company: string;
+  cnt: number;
+  mine: number;
+  logo_url: string;
+  verified: boolean;
+}
 
 /** Заглушка для аптек: справочника лекарств ещё нет. */
 export function PharmacyStub({ title }: { title: string }) {
@@ -45,22 +55,33 @@ function CatalogList() {
   /** null — все товары, '' — без категории */
   const [category, setCategory] = useState<string | null>(null);
   const [sub, setSub] = useState<string | null>(null);
+  /** null — компания не выбрана: в категории показываются карточки компаний */
+  const [company, setCompany] = useState<string | null>(null);
   const [onlyNew, setOnlyNew] = useStored('sauda:catalog:onlyNew', false);
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useStored('sauda:catalog:pageSize', 50);
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
 
-  useEffect(() => setPage(0), [term, category, sub, onlyNew, pageSize]);
+  useEffect(() => setPage(0), [term, category, sub, company, onlyNew, pageSize]);
+  // при поиске ищем по всей категории, минуя карточки компаний
+  const showCompanies = category !== null && company === null && !term;
 
   const cats = useQuery(() => q<CategoryRow[]>(db.rpc('catalog_categories', { p_org: org.id })), [org.id]);
-  const list = useQuery(
-    () => q<Row[]>(db.rpc('catalog_search', {
-      p_org: org.id, p_term: term, p_category: category, p_subcategory: sub, p_only_new: onlyNew,
-      p_limit: pageSize, p_offset: page * pageSize,
-    })),
-    [org.id, term, category, sub, onlyNew, page, pageSize],
+  const companies = useQuery(
+    // список нужен и внутри компании: из него берутся аватарка и отметка для шапки
+    async () => (category !== null ? q<CompanyRow[]>(db.rpc('catalog_company_list', { p_org: org.id, p_category: category, p_subcategory: sub })) : []),
+    [org.id, category, sub],
   );
+  const list = useQuery(
+    async () => (showCompanies ? [] : q<Row[]>(db.rpc('catalog_search', {
+      p_org: org.id, p_term: term, p_category: category, p_subcategory: sub, p_only_new: onlyNew,
+      p_limit: pageSize, p_offset: page * pageSize, p_company: term ? null : company,
+    }))),
+    [org.id, term, category, sub, company, onlyNew, page, pageSize, showCompanies],
+  );
+  const current = company === null ? null
+    : companies.data?.find((c) => c.company === company) ?? { company, cnt: 0, mine: 0, logo_url: '', verified: false };
 
   const tree = useMemo(() => {
     const roots = new Map<string, { total: number; subs: CategoryRow[] }>();
@@ -117,6 +138,7 @@ function CatalogList() {
   const select = (c: string | null, s: string | null = null) => {
     setCategory(c);
     setSub(s);
+    setCompany(null);
   };
 
   return (
@@ -166,7 +188,39 @@ function CatalogList() {
           ))}
         </div>
 
+        {showCompanies ? (
+          companies.error ? <div className="card empty error-text">{companies.error}</div>
+          : companies.loading && !companies.data?.length ? <div className="card empty">Загрузка…</div>
+          : !companies.data?.length ? <div className="card empty">В этой категории пока нет товаров</div>
+          : (
+            <div className="company-grid">
+              {companies.data.map((c) => (
+                <button className="card company-card" key={c.company || '—'} onClick={() => setCompany(c.company)}>
+                  <CompanyAvatar name={c.company} logo={c.logo_url} />
+                  <span className="company-info">
+                    <b>{c.company || 'Другие производители'}</b>
+                    <span className="muted">
+                      {c.cnt} {plural(c.cnt, 'товар', 'товара', 'товаров')}{Number(c.mine) > 0 && ` · у вас ${c.mine}`}
+                    </span>
+                    {c.verified && <VerifiedBadge />}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )
+        ) : (
         <div>
+          {current && !term && (
+            <div className="company-head">
+              <button className="icon-btn" onClick={() => setCompany(null)} aria-label="Ко всем компаниям"><Icon name="back" /></button>
+              <CompanyAvatar name={current.company} logo={current.logo_url} size={40} />
+              <div className="grow">
+                <h2>{current.company || 'Другие производители'}</h2>
+                {current.verified && <VerifiedBadge />}
+              </div>
+              <span className="muted">{[category || 'Без категории', sub].filter(Boolean).join(' · ')}</span>
+            </div>
+          )}
           <div className="table-wrap">
             <table className="table">
               <thead>
@@ -217,6 +271,7 @@ function CatalogList() {
           </div>
           <Pager page={page} pageSize={pageSize} total={total} onPage={setPage} onPageSize={setPageSize} />
         </div>
+        )}
       </div>
 
       {picked.size > 0 && (
@@ -232,4 +287,12 @@ function CatalogList() {
       )}
     </div>
   );
+}
+
+function plural(n: number, one: string, few: string, many: string): string {
+  const m10 = n % 10;
+  const m100 = n % 100;
+  if (m10 === 1 && m100 !== 11) return one;
+  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return few;
+  return many;
 }

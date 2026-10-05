@@ -11,6 +11,7 @@ import { resolve } from 'node:path';
 import * as XLSX from 'xlsx';
 import { parseImport } from '../src/lib/importParse';
 import { STARTER_PACKS } from '../src/lib/starter';
+import { COMPANIES, companyOf } from './catalog-companies';
 import { PACK_RULES } from './catalog-packs';
 
 const env = Object.fromEntries(
@@ -37,6 +38,7 @@ interface Row {
   category: string;
   subcategory: string;
   starter_pack: string;
+  company: string;
 }
 
 const cap = (s: string) => (s ? s[0].toUpperCase() + s.slice(1) : s);
@@ -62,6 +64,7 @@ function build(): Row[] {
       category: cap((i.category ?? '').trim()),
       subcategory: cap((i.subcategory ?? '').trim()),
       starter_pack: '',
+      company: companyOf(name),
     });
   }
 
@@ -91,6 +94,10 @@ async function main() {
 
   if (!key) throw new Error('Нужен служебный ключ: SUPABASE_SERVICE_ROLE_KEY в .env.local или CATALOG_SERVICE_KEY');
   const db = createClient(url, key, { auth: { persistSession: false } });
+  // компании словаря — известные производители: отмечаем как подтверждённые, логотип не трогаем
+  const { error: companiesError } = await db.from('catalog_companies')
+    .upsert(COMPANIES.map(([name]) => ({ name, verified: true })), { onConflict: 'name', ignoreDuplicates: false });
+  if (companiesError) throw new Error(companiesError.message);
   for (let i = 0; i < rows.length; i += CHUNK) {
     const { error } = await db.from('catalog_products').upsert(rows.slice(i, i + CHUNK), { onConflict: 'barcode' });
     if (error) throw new Error(`Строки ${i + 1}–${i + CHUNK}: ${error.message}`);
