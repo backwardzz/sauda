@@ -34,7 +34,6 @@ const MANAGER_NAV: Section[] = [
   {
     label: 'Закупки',
     items: [
-      { label: 'Поставщики и каталоги', to: '/market' },
       { label: 'Мои заказы', to: '/orders' },
       { label: 'Приёмка', to: '/docs/supply' },
     ],
@@ -134,10 +133,23 @@ export function Layout() {
         )}
         <span className="spacer" />
         {!isSupplier && canManage && (
-          <NavLink to="/catalog" className={({ isActive }) => `btn accent ${isActive ? 'active' : ''}`}>
-            <Icon name="layers" size={16} />
-            Каталог товаров
-          </NavLink>
+          <div className="nav-item">
+            <button
+              className={`btn accent ${['/catalog', '/market'].some((p) => location.pathname.startsWith(p)) ? 'active' : ''}`}
+              onClick={() => setOpen(open === 'catalog' ? null : 'catalog')}
+              aria-expanded={open === 'catalog'}
+            >
+              <Icon name="layers" size={16} />
+              Каталог товаров
+              <Icon name="down" size={14} />
+            </button>
+            {open === 'catalog' && (
+              <div className="nav-menu">
+                <NavLink to="/catalog" end className={({ isActive }) => (isActive ? 'active' : '')}>Каталог товаров</NavLink>
+                <NavLink to="/market" className={({ isActive }) => (isActive ? 'active' : '')}>Поставщики и каталоги</NavLink>
+              </div>
+            )}
+          </div>
         )}
         {!isSupplier && (
           <button className="btn primary" onClick={() => navigate('/pos')}>
