@@ -57,6 +57,10 @@ a.btn:hover { text-decoration: none; }
 .btn:disabled { opacity: 0.55; cursor: not-allowed; }
 .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
 .btn.primary:hover:not(:disabled) { background: var(--accent-hover); border-color: var(--accent-hover); }
+/* заметная, но второстепенная по отношению к «Кассе» кнопка */
+.btn.accent { background: var(--accent-weak); border-color: #cfccfa; color: var(--accent); font-weight: 600; }
+a.btn.accent { color: var(--accent); }
+.btn.accent:hover:not(:disabled), .btn.accent.active { background: #e2e0ff; border-color: var(--accent); }
 .btn.danger { color: var(--danger); border-color: #e9b4ae; }
 .btn.danger:hover:not(:disabled) { background: var(--danger-weak); border-color: var(--danger); }
 .btn.ghost { border-color: transparent; background: transparent; }
@@ -283,9 +287,10 @@ input[type='checkbox'] { width: 16px; height: 16px; accent-color: var(--accent);
 .pack-head b { display: block; font-size: 15px; }
 .pack-foot { display: flex; align-items: center; gap: 8px; padding: 0 8px 10px 42px; font-size: 13px; }
 .pack-items { max-height: 320px; overflow: auto; padding: 6px 16px 10px; border-top: 1px solid var(--line); }
-.product-image { display: grid; place-items: center; flex: none; width: 100%; aspect-ratio: 4 / 3; border-radius: 6px; background: #fff; color: var(--line-strong); overflow: hidden; }
-.product-image img { width: 100%; height: 100%; object-fit: contain; }
-.product-image.small { width: 40px; height: 40px; aspect-ratio: auto; border: 1px solid var(--line); }
+/* фото товаров на белом фоне в одинаковой квадратной рамке с полями */
+.product-image { display: grid; place-items: center; flex: none; width: 100%; aspect-ratio: 1; padding: 12px; border-radius: 6px; background: #fff; color: var(--line-strong); overflow: hidden; }
+.product-image img { width: 100%; height: 100%; object-fit: contain; mix-blend-mode: multiply; }
+.product-image.small { width: 40px; height: 40px; padding: 3px; border: 1px solid var(--line); }
 .product-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px; }
 .product-card { display: flex; flex-direction: column; gap: 8px; padding: 12px; }
 .product-card.active { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
@@ -295,7 +300,7 @@ input[type='checkbox'] { width: 16px; height: 16px; accent-color: var(--accent);
 .product-card .qty-box { margin-top: auto; }
 .product-card .qty-box input { height: 32px; min-width: 0; }
 .supplier-shots { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
-.supplier-shots .product-image { aspect-ratio: 1; border: 1px solid var(--line); }
+.supplier-shots .product-image { padding: 6px; border: 1px solid var(--line); }
 .banner { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 14px 16px; margin-bottom: 14px; border-color: var(--accent); background: var(--accent-weak); }
 .choice.small button { padding: 9px 12px; }
 
@@ -350,10 +355,15 @@ input[type='checkbox'] { width: 16px; height: 16px; accent-color: var(--accent);
   .side-list { max-height: 230px; }
   .form-grid { grid-template-columns: 1fr; }
   .pos-main { grid-template-columns: 1fr; overflow: auto; }
-  /* на узком экране меню переносится на вторую строку: прокрутка обрезала бы выпадающие списки */
+  .brand { margin-right: 6px; }
+}
+
+/* меню с кнопками «Каталог товаров» и «Касса» не помещается в строку уже на ноутбуке:
+   переносится на вторую строку — прокрутка обрезала бы выпадающие списки */
+@media (max-width: 1280px) {
   .topbar { flex-wrap: wrap; height: auto; min-height: 52px; padding: 6px 12px; row-gap: 2px; }
   .topbar .spacer { display: none; }
-  .brand { margin-right: 6px; }
+  .user-chip > span:not(.avatar) { display: none; }
 }
 
 @media print {

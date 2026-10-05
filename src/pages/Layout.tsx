@@ -43,7 +43,6 @@ const MANAGER_NAV: Section[] = [
     label: 'Товары',
     items: [
       { label: 'Список товаров', to: '/products' },
-      { label: 'Каталог товаров', to: '/catalog' },
       { label: 'Быстрые товары', to: '/quick' },
       { label: 'Склад', to: '/stock' },
       { label: 'Оприходование', to: '/docs/posting' },
@@ -134,6 +133,12 @@ export function Layout() {
           ),
         )}
         <span className="spacer" />
+        {!isSupplier && canManage && (
+          <NavLink to="/catalog" className={({ isActive }) => `btn accent ${isActive ? 'active' : ''}`}>
+            <Icon name="layers" size={16} />
+            Каталог товаров
+          </NavLink>
+        )}
         {!isSupplier && (
           <button className="btn primary" onClick={() => navigate('/pos')}>
             <Icon name="cart" size={16} />
