@@ -6,6 +6,7 @@ const loginEmail = (login: string) => (login.includes('@') ? login : `${login}@s
 
 export function AuthPage() {
   const [mode, setMode] = useState<'login' | 'register'>('login');
+  const [kind, setKind] = useState<'store' | 'supplier'>('store');
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -26,7 +27,8 @@ export function AuthPage() {
         const { data, error } = await db.auth.signUp({
           email: email.trim(),
           password,
-          options: { data: { full_name: name.trim() } },
+          // выбор запоминается в профиле: следующий шаг (данные компании) откроется уже для нужной роли
+          options: { data: { full_name: name.trim(), account_kind: kind } },
         });
         if (error) throw error;
         if (!data.session) setNotice('Мы отправили письмо со ссылкой. Подтвердите почту и войдите.');
@@ -49,6 +51,21 @@ export function AuthPage() {
           <button type="button" className={mode === 'login' ? 'active' : ''} onClick={() => setMode('login')}>Вход</button>
           <button type="button" className={mode === 'register' ? 'active' : ''} onClick={() => setMode('register')}>Регистрация</button>
         </div>
+        {mode === 'register' && (
+          <div className="field">
+            <span>Кто вы?</span>
+            <div className="choice">
+              <button type="button" className={kind === 'store' ? 'active' : ''} onClick={() => setKind('store')}>
+                <b>Магазин</b>
+                <span>Учёт товаров, касса, заказы поставщикам</span>
+              </button>
+              <button type="button" className={kind === 'supplier' ? 'active' : ''} onClick={() => setKind('supplier')}>
+                <b>Торговый представитель</b>
+                <span>Каталог и заказы магазинов</span>
+              </button>
+            </div>
+          </div>
+        )}
         {mode === 'register' && (
           <label className="field">
             <span>Имя и фамилия</span>

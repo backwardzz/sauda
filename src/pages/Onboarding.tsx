@@ -5,7 +5,8 @@ import { useSession } from '../lib/session';
 /** Первый вход: у пользователя ещё нет компании и нет приглашений. */
 export function Onboarding() {
   const { user, reload, signOut } = useSession();
-  const [kind, setKind] = useState<'store' | 'supplier'>('store');
+  // роль выбрана при регистрации; здесь её ещё можно поменять
+  const [kind, setKind] = useState<'store' | 'supplier'>(user?.user_metadata?.account_kind === 'supplier' ? 'supplier' : 'store');
   const [business, setBusiness] = useState<'grocery' | 'pharmacy'>('grocery');
   const [fresh, setFresh] = useState(true);
   const [company, setCompany] = useState('');
@@ -43,8 +44,8 @@ export function Onboarding() {
             <span>Учёт товаров, касса, отчёты, заказы поставщикам</span>
           </button>
           <button type="button" className={kind === 'supplier' ? 'active' : ''} onClick={() => setKind('supplier')}>
-            <b>Поставщик</b>
-            <span>Завод, дистрибьютор, торговый представитель: каталог и заказы магазинов</span>
+            <b>Торговый представитель</b>
+            <span>Завод или дистрибьютор: каталог и заказы магазинов</span>
           </button>
         </div>
         {kind === 'store' && (
