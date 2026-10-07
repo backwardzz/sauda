@@ -195,7 +195,7 @@ export function CompanyGeo() {
       <div className="card geo-matrix-card">
         <div className="card-head">
           <h2>Товары по областям</h2>
-          <span className="muted">{metric === 'sum' ? `сумма заказов, ${org.currency}` : 'количество'} · чем темнее, тем больше</span>
+          <span className="muted">{metric === 'sum' ? `сумма заказов, ${org.currency}` : 'количество'} · чем насыщеннее цвет, тем больше</span>
           <span className="spacer" />
           <span className="muted geo-legend"><i className="geo-dot" />магазины есть, заказов нет</span>
           <div className="segmented">
@@ -235,7 +235,7 @@ export function CompanyGeo() {
                 );
               }))}
             </svg>
-            <div className="muted geo-map-note">Светло-серые области — на площадке там пока нет магазинов. Границы областей: simplemaps.com</div>
+            <div className="muted geo-map-note">Бледные серые области — на площадке там пока нет магазинов. Границы областей: simplemaps.com</div>
           </div>
         ) : columns.length === 0 || matrixRows.length === 0 ? (
           <div className="empty">{loading ? 'Загрузка…' : 'Пока нечего показать'}</div>

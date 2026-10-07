@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useCarts } from '../lib/cart';
 import { useSession } from '../lib/session';
+import { THEME_LABEL, useTheme } from '../lib/theme';
 import { ROLE_LABEL } from '../lib/types';
 import { CompanyAvatar } from '../ui/CompanyAvatar';
 import { Icon } from '../ui/Icon';
@@ -92,6 +93,7 @@ export function Layout() {
   const location = useLocation();
   const navigate = useNavigate();
   const cart = useCarts(store?.id ?? '');
+  const [theme, setTheme] = useTheme();
 
   useEffect(() => setOpen(null), [location.pathname]);
   useEffect(() => {
@@ -206,6 +208,16 @@ export function Layout() {
                     <span className="muted">{m.org.kind === 'company' ? 'компания' : 'магазин'}</span>
                   </button>
                 ))}
+              <div className="menu-theme">
+                <span className="muted">Тема</span>
+                <div className="segmented">
+                  {(['auto', 'light', 'dark'] as const).map((t) => (
+                    <button key={t} className={theme === t ? 'active' : ''} onClick={() => setTheme(t)} title={THEME_LABEL[t]}>
+                      {t === 'auto' ? 'Авто' : THEME_LABEL[t]}
+                    </button>
+                  ))}
+                </div>
+              </div>
               <button className="menu-item" onClick={signOut}>
                 <Icon name="logout" size={16} />
                 Выйти

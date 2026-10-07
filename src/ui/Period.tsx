@@ -1,4 +1,5 @@
 import { fromDateInput, toDateInput } from '../lib/format';
+import { DateInput } from './DateInput';
 
 /** Период в днях включительно, в формате полей type="date". */
 export interface Period {
@@ -44,21 +45,9 @@ export function PeriodPicker({ value, onChange }: { value: Period; onChange: (p:
           );
         })}
       </div>
-      <input
-        type="date"
-        value={value.from}
-        max={value.to}
-        onChange={(e) => e.target.value && onChange({ ...value, from: e.target.value })}
-        aria-label="Начало периода"
-      />
+      <DateInput value={value.from} max={value.to} range={value} onChange={(from) => onChange({ ...value, from })} aria-label="Начало периода" />
       <span className="muted">—</span>
-      <input
-        type="date"
-        value={value.to}
-        min={value.from}
-        onChange={(e) => e.target.value && onChange({ ...value, to: e.target.value })}
-        aria-label="Конец периода"
-      />
+      <DateInput value={value.to} min={value.from} range={value} onChange={(to) => onChange({ ...value, to })} aria-label="Конец периода" />
     </div>
   );
 }

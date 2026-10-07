@@ -43,7 +43,7 @@ export function Captcha({ round, onToken }: { round: number; onToken: (token: st
       id = t.render(box.current, {
         sitekey: CAPTCHA_KEY,
         language: 'ru',
-        theme: 'light',
+        theme: document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light',
         size: 'flexible',
         callback: (token: string) => report.current(token),
         'expired-callback': () => report.current(null),

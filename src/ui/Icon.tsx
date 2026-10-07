@@ -24,6 +24,8 @@ const PATHS = {
   printer: 'M7 8V3h10v5M7 17H4v-7h16v7h-3M7 14h10v7H7z',
   logout: 'M9 4H4v16h5M16 8l4 4-4 4M20 12H9',
   back: 'M15 5l-7 7 7 7',
+  forward: 'M9 5l7 7-7 7',
+  calendar: 'M4 6h16v14H4zM4 10h16M8 3v4M16 3v4',
   down: 'M6 9l6 6 6-6',
   undo: 'M4 9h11a5 5 0 010 10H9M4 9l4-4M4 9l4 4',
   clock: 'M12 21a9 9 0 100-18 9 9 0 000 18zM12 7v5l3 2',
