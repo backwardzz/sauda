@@ -8,7 +8,7 @@ import { db, q } from '../../lib/supabase';
 import { ORDER_STATUS, type Order, type OrderItem } from '../../lib/types';
 import { exportXlsx } from '../../lib/xlsx';
 import { Icon } from '../../ui/Icon';
-import { Confirm } from '../../ui/Modal';
+import { Confirm, Modal } from '../../ui/Modal';
 import { toast } from '../../ui/toast';
 
 const STEPS = ['new', 'confirmed', 'shipped', 'received'] as const;
@@ -19,6 +19,8 @@ export function OrderView() {
   const { org, canManage, branches, store } = useOrg();
   const [busy, setBusy] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState(false);
+  // подтверждение и отгрузка необратимы, поэтому сначала спрашиваем
+  const [ask, setAsk] = useState<'confirm' | 'ship' | null>(null);
   const [edits, setEdits] = useState<Record<string, string>>({});
   const [reply, setReply] = useState('');
 
@@ -61,6 +63,7 @@ export function OrderView() {
       const r = await fn();
       toast.ok(ok);
       setConfirmCancel(false);
+      setAsk(null);
       if (after) after(r);
       else data.reload();
     } catch (e) {
@@ -129,10 +132,8 @@ export function OrderView() {
       )}
 
       <div className="toolbar">
-        {isSupplier && o.status === 'new' && <button className="btn primary" disabled={busy} onClick={confirm}>{changed ? 'Подтвердить с изменениями' : 'Подтвердить заказ'}</button>}
-        {isSupplier && o.status === 'confirmed' && (
-          <button className="btn primary" disabled={busy} onClick={() => run(() => status('shipped'), 'Заказ отгружен: товар списан со склада, магазин примет его в один клик')}>Отгрузить</button>
-        )}
+        {isSupplier && o.status === 'new' && <button className="btn primary" disabled={busy} onClick={() => setAsk('confirm')}>{changed ? 'Подтвердить с изменениями' : 'Подтвердить заказ'}</button>}
+        {isSupplier && o.status === 'confirmed' && <button className="btn primary" disabled={busy} onClick={() => setAsk('ship')}>Отгрузить</button>}
         {!isSupplier && o.status === 'shipped' && canManage && <button className="btn primary" disabled={busy} onClick={receive}>Принять товар</button>}
         {!isSupplier && o.supply_doc && <Link className="btn" to={`/docs/supply/${o.supply_doc}`}>Открыть приёмку</Link>}
         {!isSupplier && canManage && ['received', 'canceled'].includes(o.status) && (
@@ -243,6 +244,40 @@ export function OrderView() {
         <p className="hint" style={{ marginTop: 10 }}>«Принять товар» создаст черновик приёмки с этими количествами и ценами. Товары, которых ещё нет в вашей базе, заведутся сами.</p>
       )}
 
+      {ask === 'confirm' && (
+        <Confirm title={`Подтвердить заказ № ${o.number}`} busy={busy} onClose={() => setAsk(null)} onConfirm={confirm}
+          confirmLabel={changed ? 'Подтвердить с изменениями' : 'Подтвердить заказ'}
+          text={<>
+            Покупатель ({o.store_org_name}) увидит, что заказ принят в работу: позиций {items.filter((i) => shipQty(i) > 0).length} на {money(total)} {org.currency}.
+            {changed && ' Количество к отгрузке отличается от заказанного — магазин увидит изменения.'}
+            {' '}После подтверждения количество поменять уже нельзя.
+          </>} />
+      )}
+      {ask === 'ship' && (
+        <Modal title={`Отгрузить заказ № ${o.number}`} onClose={() => setAsk(null)} width={480}
+          footer={
+            <>
+              <button className="btn" onClick={() => setAsk(null)}>Отмена</button>
+              <button className="btn primary" disabled={busy || short.length > 0}
+                onClick={() => run(() => status('shipped'), 'Заказ отгружен: товар списан со склада, магазин примет его в один клик')}>
+                Отгрузить
+              </button>
+            </>
+          }>
+          <div className="stack">
+            <p>
+              Товар будет списан со склада{o.branch_name && <> ({o.branch_name})</>}: позиций {items.filter((i) => shipQty(i) > 0).length} на {money(total)} {org.currency}.
+              Покупатель ({o.store_org_name}) сможет принять его у себя.
+            </p>
+            <p className="muted">Куда везти: {[o.store_city, o.store_address, o.store_name].filter(Boolean).join(', ') || 'адрес не указан'}. Отменить отгрузку будет нельзя.</p>
+            {short.length > 0 && <p className="error-text">На складе филиала не хватает товаров: {short.length}. Пополните остаток или передайте заказ другому филиалу.</p>}
+            {/* передачи заказа водителю пока нет: кнопка показывает, что она появится */}
+            <button type="button" className="btn soon-btn" disabled title="Раздел для водителей-экспедиторов ещё в разработке">
+              <Icon name="truck" size={16} />Отправить водителю-экспедитору<span className="badge warn">Скоро…</span>
+            </button>
+          </div>
+        </Modal>
+      )}
       {confirmCancel && (
         <Confirm title={`Отменить заказ № ${o.number}`} text="Вторая сторона увидит, что заказ отменён. Вернуть его в работу будет нельзя."
           confirmLabel="Отменить заказ" danger busy={busy} onClose={() => setConfirmCancel(false)}

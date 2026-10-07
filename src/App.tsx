@@ -35,6 +35,7 @@ import { NewStore } from './pages/catalog/NewStore';
 import { CompanyHome } from './pages/company/CompanyHome';
 import { CompanyCatalog } from './pages/company/CompanyCatalog';
 import { CompanyProduct } from './pages/company/CompanyProduct';
+import { CompanyGeo } from './pages/company/CompanyGeo';
 import { CompanyStock } from './pages/company/CompanyStock';
 import { Profile } from './pages/profile/Profile';
 
@@ -70,6 +71,7 @@ export function App() {
           <Route path="/catalog" element={<CompanyCatalog />} />
           <Route path="/catalog/:id" element={<CompanyProduct />} />
           <Route path="/stock" element={<CompanyStock />} />
+          <Route path="/analytics" element={<CompanyGeo />} />
           <Route path="/profile" element={<Profile />} />
           <Route path="/users" element={<Users />} />
         </Route>

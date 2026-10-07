@@ -47,14 +47,31 @@ export function DataTable<T>(props: Props<T>) {
   const [localSort, setLocalSort] = useState<Sort | null>(null);
   const [menu, setMenu] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  // меню столбцов привязано к окну, а не к таблице: иначе в короткой таблице его обрезает рамка с прокруткой
+  const [menuPos, setMenuPos] = useState({ top: 0, right: 0 });
+
+  const toggleMenu = () => {
+    const r = menuRef.current?.getBoundingClientRect();
+    if (r) setMenuPos({ top: r.bottom + 4, right: window.innerWidth - r.right });
+    setMenu((m) => !m);
+  };
 
   useEffect(() => {
     if (!menu) return;
     const close = (e: MouseEvent) => {
       if (!menuRef.current?.contains(e.target as Node)) setMenu(false);
     };
+    const hide = (e: Event) => {
+      if (!(e.target instanceof Node && menuRef.current?.contains(e.target))) setMenu(false);
+    };
     window.addEventListener('mousedown', close);
-    return () => window.removeEventListener('mousedown', close);
+    window.addEventListener('scroll', hide, true);
+    window.addEventListener('resize', hide);
+    return () => {
+      window.removeEventListener('mousedown', close);
+      window.removeEventListener('scroll', hide, true);
+      window.removeEventListener('resize', hide);
+    };
   }, [menu]);
 
   const isHidden = (c: Column<T>) => !c.fixed && (hidden[c.key] ?? Boolean(c.optional));
@@ -123,11 +140,11 @@ export function DataTable<T>(props: Props<T>) {
             ))}
             <th className="cell-gear">
               <div className="popover-anchor" ref={menuRef}>
-                <button className="icon-btn small" onClick={() => setMenu((m) => !m)} aria-label="Настроить столбцы">
+                <button className="icon-btn small" onClick={toggleMenu} aria-label="Настроить столбцы">
                   <Icon name="gear" size={15} />
                 </button>
                 {menu && (
-                  <div className="popover right">
+                  <div className="popover fixed" style={menuPos}>
                     <div className="popover-title">Столбцы</div>
                     {columns.filter((c) => !c.fixed).map((c) => (
                       <label key={c.key} className="check-row">

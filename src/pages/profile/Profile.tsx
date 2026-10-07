@@ -9,7 +9,9 @@ import { VerifiedBadge } from '../../ui/CompanyAvatar';
 import { Icon } from '../../ui/Icon';
 import { LogoUpload } from '../../ui/LogoUpload';
 import { Modal } from '../../ui/Modal';
+import { PhoneInput } from '../../ui/PhoneInput';
 import { toast } from '../../ui/toast';
+import { ApiKeys } from './ApiKeys';
 import { Branches } from './Branches';
 
 /** Профиль магазина или компании: сначала просмотр, правка — по кнопке. */
@@ -110,6 +112,7 @@ export function Profile() {
       </div>
 
       {isCompany && <Branches />}
+      {isCompany && owner && <ApiKeys />}
 
       {editing && <ProfileEditor onClose={() => setEditing(false)} />}
     </>
@@ -184,7 +187,7 @@ function ProfileEditor({ onClose }: { onClose: () => void }) {
         )}
         <label className="field">
           <span>Телефон</span>
-          <input value={form.phone} onChange={(e) => set({ phone: e.target.value })} onBlur={() => set({ phone: formatPhone(form.phone) })} inputMode="tel" placeholder="+7 701 000 00 00" />
+          <PhoneInput value={form.phone} onChange={(phone) => set({ phone })} />
         </label>
         <label className="field">
           <span>Почта</span>

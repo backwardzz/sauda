@@ -55,7 +55,24 @@ export function formatPhone(raw: string): string {
   return n ? `+7 ${n.slice(0, 3)} ${n.slice(3, 6)} ${n.slice(6, 8)} ${n.slice(8)}` : raw.trim();
 }
 
-/** «1 товар», «2 товара», «5 товаров». */
+/** Номер по мере ввода: всегда «+7» и не больше десяти цифр после него. Лишние «8» и «7» в начале отбрасываются. */
+export function maskPhone(raw: string): string {
+  const all = raw.replace(/\D/g, '');
+  if (!all) return '';
+  const prefixed = raw.trimStart().startsWith('+7');
+  let d = prefixed ? all.slice(1) : all;
+  // код города или оператора с «8» не начинается; «7» лишняя только в номере, вставленном целиком без «+7»
+  if (d[0] === '8' || (!prefixed && d.length >= 11 && d[0] === '7')) d = d.slice(1);
+  // стёрли пробел после «+7» — поле очищается целиком
+  if (!d) return raw.trim() === '+7' ? '' : '+7 ';
+  d = d.slice(0, 10);
+  return `+7 ${[d.slice(0, 3), d.slice(3, 6), d.slice(6, 8), d.slice(8)].filter(Boolean).join(' ')}`;
+}
+
+/** Шаблон готового номера для атрибута pattern. */
+export const PHONE_PATTERN = '\\+7 \\d{3} \\d{3} \\d{2} \\d{2}';
+
+/** «1 товар»,«2 товара», «5 товаров». */
 export function plural(n: number, one: string, few: string, many: string): string {
   const m10 = Math.abs(n) % 10;
   const m100 = Math.abs(n) % 100;

@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { cityName, useCities } from '../../lib/cities';
+import { cityLabel, cityName, useCities } from '../../lib/cities';
 import { formatPhone } from '../../lib/format';
 import { useWorkspace } from '../../lib/session';
 import { db, q } from '../../lib/supabase';
 import type { Store } from '../../lib/types';
 import { CitySelect } from '../../ui/CitySelect';
+import { PhoneInput } from '../../ui/PhoneInput';
 import { DataTable, type Column } from '../../ui/DataTable';
 import { Icon } from '../../ui/Icon';
 import { Modal } from '../../ui/Modal';
@@ -56,7 +57,7 @@ export function Stores() {
 
   const columns: Column<Store>[] = [
     { key: 'name', title: 'Название', fixed: true, render: (s) => <a>{s.name}</a> },
-    { key: 'city', title: 'Город', value: (s) => cityName(cities, s.city_id), render: (s) => cityName(cities, s.city_id) || <span className="badge warn">не указан</span> },
+    { key: 'city', title: 'Город', value: (s) => cityName(cities, s.city_id), render: (s) => cityLabel(cities, s.city_id) || <span className="badge warn">не указан</span> },
     { key: 'address', title: 'Адрес', value: (s) => s.address },
     { key: 'phone', title: 'Телефон', value: (s) => s.phone },
     { key: 'registers', title: 'Касс', align: 'right', value: (s) => registers.filter((r) => r.store_id === s.id).length },
@@ -104,8 +105,7 @@ export function Stores() {
             </div>
             <label className="field">
               <span>Телефон</span>
-              <input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} onBlur={() => setForm({ ...form, phone: formatPhone(form.phone) })}
-                inputMode="tel" placeholder="+7 701 000 00 00" />
+              <PhoneInput value={form.phone} onChange={(phone) => setForm({ ...form, phone })} />
             </label>
             <label className="field wide">
               <span>Адрес</span>

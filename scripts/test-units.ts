@@ -2,9 +2,10 @@
 import { grade } from '../src/lib/abc';
 import { generateBarcode } from '../src/lib/barcode';
 import { bestOffer, clampQty, suggestQty } from '../src/lib/cart';
-import { formatPhone, markupPct, marginPct, parseNum, plural, round2, round3 } from '../src/lib/format';
+import { formatPhone, markupPct, marginPct, maskPhone, parseNum, PHONE_PATTERN, plural, round2, round3 } from '../src/lib/format';
 import { parseImport } from '../src/lib/importParse';
 import { decodeInvoice, encodeInvoice, invoiceUnit } from '../src/lib/invoice';
+import { parseStockImport } from '../src/lib/stockImport';
 import type { Offer } from '../src/lib/types';
 import { fullName, splitName } from '../src/lib/variants';
 import { periodRange } from '../src/ui/Period';
@@ -139,6 +140,27 @@ eq('дозаказ до двойного критического, упаков�
 
 console.log('Телефон и склонения');
 eq('номер приводится к единому виду', ['87010001122', '7010001122', '+7 (701) 000-11-22', ' 12345 '].map(formatPhone), ['+7 701 000 11 22', '+7 701 000 11 22', '+7 701 000 11 22', '12345']);
+eq('маска номера: «+7» и не больше десяти цифр',
+  ['+7 7', '+7 7012', '+7 701 000 11 229', '87010001122', '+7 87010001122', '77010001122', '+7 (701) 000-11-22', '8', '+7', 'абв'].map(maskPhone),
+  ['+7 7', '+7 701 2', '+7 701 000 11 22', '+7 701 000 11 22', '+7 701 000 11 22', '+7 701 000 11 22', '+7 701 000 11 22', '+7 ', '', '']);
+eq('шаблон номера', ['+7 701 000 11 22', '+7 701 000 11 2', '8 701 000 11 22'].map((s) => new RegExp(`^(?:${PHONE_PATTERN})$`).test(s)), [true, false, false]);
+const stockBranches = [{ id: 'm', name: 'Главный офис', is_main: true }, { id: 'k', name: 'Склад в Конаеве', is_main: false }];
+const ownFile = parseStockImport([
+  ['Товар', 'Вид', 'Штрихкод', 'Категория', 'Главный офис', 'склад в конаеве ', 'Всего', 'В заказах', 'Свободно', 'Цена'],
+  ['Айран', '0,5 л', 4870000005109, 'Кисломолочные', 120, '', 120, 0, 120, 240],
+  ['Кефир', '1 л', '4870000005110', '', '1 250,5', 30, 80, 0, 80, 300],
+  ['Сыр', '', '4870000005111', '', -5, 'нет', '', '', '', 900],
+  ['', '', '', '', 10, 10],
+], stockBranches);
+eq('остатки из своей выгрузки: столбец на филиал, пустые и ошибочные ячейки пропущены', [ownFile.columns, ownFile.items], [
+  ['Главный офис', 'Склад в Конаеве'],
+  [{ barcode: '4870000005109', branch_id: 'm', qty: 120 }, { barcode: '4870000005110', branch_id: 'm', qty: 1250.5 }, { barcode: '4870000005110', branch_id: 'k', qty: 30 }],
+]);
+const plainFile = parseStockImport([['Отчёт 1С'], ['Штрихкод', 'Наименование', 'Остаток'], ['111', 'Айран', 7]], stockBranches);
+eq('простой файл «Штрихкод + Остаток» — на главный филиал', plainFile.items, [{ barcode: '111', branch_id: 'm', qty: 7 }]);
+let stockThrew = false;
+try { parseStockImport([['Название', 'Цена'], ['Айран', 1]], stockBranches); } catch { stockThrew = true; }
+eq('файл остатков без штрихкода отклонён', stockThrew, true);
 eq('склонения', [1, 2, 5, 11, 21, 104].map((n) => plural(n, 'товар', 'товара', 'товаров')), ['товар', 'товара', 'товаров', 'товаров', 'товар', 'товара']);
 
 console.log('Период');

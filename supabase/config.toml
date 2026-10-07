@@ -244,6 +244,12 @@ otp_expiry = 3600
 # admin_email = "admin@email.com"
 # sender_name = "Admin"
 
+# Письмо после регистрации: код для окна «Введите код из письма» и ссылка на тот же случай.
+# В облаке шаблон задаётся в панели (Authentication → Emails → Confirm signup) — вставить туда тот же файл.
+[auth.email.template.confirmation]
+subject = "Sauda: код подтверждения {{ .Token }}"
+content_path = "./supabase/templates/confirmation.html"
+
 # Uncomment to customize email template
 # [auth.email.template.invite]
 # subject = "You have been invited"

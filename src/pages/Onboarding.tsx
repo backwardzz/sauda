@@ -4,17 +4,18 @@ import { db, errorText, q } from '../lib/supabase';
 import { useSession } from '../lib/session';
 import { COMPANY_TYPE, type CompanyType, type OrgKind } from '../lib/types';
 import { CitySelect } from '../ui/CitySelect';
+import { PhoneInput } from '../ui/PhoneInput';
 
 /** Первый вход: у пользователя ещё нет магазина или компании и нет приглашений. */
 export function Onboarding() {
   const { user, reload, signOut } = useSession();
-  const meta = (user?.user_metadata ?? {}) as { account_kind?: string; city_id?: number; phone?: string; full_name?: string };
-  // роль, город и телефон выбраны при регистрации; здесь их ещё можно поменять
+  const meta = (user?.user_metadata ?? {}) as { account_kind?: string; city_id?: number; phone?: string; full_name?: string; org_name?: string };
+  // роль, название, город и телефон указаны при регистрации; здесь их ещё можно поменять
   const [kind, setKind] = useState<OrgKind>(meta.account_kind === 'company' || meta.account_kind === 'supplier' ? 'company' : 'store');
   const [business, setBusiness] = useState<'grocery' | 'pharmacy'>('grocery');
   const [companyType, setCompanyType] = useState<CompanyType>('distributor');
   const [fresh, setFresh] = useState(true);
-  const [name, setName] = useState('');
+  const [name, setName] = useState(meta.org_name ?? '');
   const [storeName, setStoreName] = useState('');
   const [city, setCity] = useState<number | null>(typeof meta.city_id === 'number' ? meta.city_id : null);
   const [address, setAddress] = useState('');
@@ -118,8 +119,7 @@ export function Onboarding() {
           </label>
           <label className="field">
             <span>Телефон <b>*</b></span>
-            <input value={phone} onChange={(e) => setPhone(e.target.value)} onBlur={() => setPhone(formatPhone(phone))} required
-              inputMode="tel" autoComplete="tel" placeholder="+7 701 000 00 00" />
+            <PhoneInput value={phone} onChange={setPhone} required autoComplete="tel" />
           </label>
           <label className="field">
             <span>БИН или ИИН</span>

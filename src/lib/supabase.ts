@@ -7,11 +7,15 @@ const key = env.VITE_SUPABASE_ANON_KEY;
 
 export const configured = Boolean(url && key);
 export const db = createClient(url || 'http://127.0.0.1:54321', key || 'missing');
+/** Адрес и публичный ключ проекта: их же указывает учётная система компании в запросах к API. */
+export const API_URL = `${url || 'http://127.0.0.1:54321'}/rest/v1/rpc`;
+export const PUBLIC_KEY = key || '';
 
 const KNOWN_ERRORS: [RegExp, string][] = [
   [/company_variants_barcode_uq/, 'Вид товара с таким штрихкодом уже есть в каталоге'],
   [/products_barcode_uq/, 'Товар с таким штрихкодом уже есть'],
   [/company_stock_qty_check/, 'Остаток не может стать отрицательным'],
+  [/stores_city_required/, 'Укажите город торговой точки'],
   [/permission denied for table/, 'Недостаточно прав для этого действия'],
   [/invites_org_id_email_key/, 'Этот адрес уже приглашён'],
   [/row-level security/, 'Недостаточно прав для этого действия'],
@@ -19,7 +23,11 @@ const KNOWN_ERRORS: [RegExp, string][] = [
   [/Invalid login credentials/, 'Неверная почта или пароль'],
   [/User already registered/, 'Пользователь с такой почтой уже зарегистрирован'],
   [/Password should be at least/, 'Пароль слишком короткий: нужно минимум 6 символов'],
-  [/Email not confirmed/, 'Почта не подтверждена: перейдите по ссылке из письма'],
+  [/Password should contain/, 'Пароль слишком простой: нужны и буквы, и цифры'],
+  [/Email not confirmed/, 'Почта не подтверждена: введите код из письма'],
+  [/Token has expired or is invalid|otp_expired/, 'Код неверный или устарел. Проверьте его или запросите новый'],
+  [/captcha/i, 'Проверка «я не робот» не пройдена, попробуйте ещё раз'],
+  [/you can only request this after|rate limit/i, 'Слишком много попыток. Подождите немного и повторите'],
   [/Failed to fetch|NetworkError/, 'Нет связи с сервером'],
 ];
 

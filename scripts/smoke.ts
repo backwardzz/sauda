@@ -323,7 +323,8 @@ async function main() {
   await fails('платёж по оприходованию отклонён', a.rpc('pay_supply', { p_doc: draft, p_amount: 1 }), 'только по проведённой приёмке');
 
   console.log('Перемещение');
-  const store2 = (await must(a.from('stores').insert({ org_id: orgA, name: 'Склад' }).select().single())).id as string;
+  await fails('торговая точка без города не заводится', a.from('stores').insert({ org_id: orgA, name: 'Склад' }).select(), 'stores_city_required');
+  const store2 = (await must(a.from('stores').insert({ org_id: orgA, name: 'Склад', city_id: almaty }).select().single())).id as string;
   const storeB = (await must(b.from('stores').select('id')))[0].id as string;
   await fails('перемещение в тот же магазин отклонено',
     a.rpc('create_stock_doc', { p_store: store, p_kind: 'transfer', p_to_store: store }), 'другой магазин');
@@ -474,6 +475,18 @@ async function main() {
   await fails('магазин не видит склад компании и не правит его',
     a.rpc('set_company_stock', { p_variant: kvasVariants[0].id, p_branch: mainBranch.id, p_qty: 1 }), 'Нет доступа');
   check('магазин не видит остатки компании напрямую', (await must(a.from('company_stock').select('qty'))).length === 0);
+  const kvasLimit = await must(s.from('company_variant_limits').select('min_stock').eq('variant_id', kvasVariants[0].id));
+  check('порог «мало на складе»: при сохранении без порога он снят, а до этого был виден компании', kvasLimit.length === 0, kvasLimit);
+  await must(s.from('company_variant_limits').upsert({ variant_id: half, org_id: supOrg, min_stock: 24 }));
+  check('порог остатка виден компании и не виден магазину',
+    (await must(s.from('company_variant_limits').select('min_stock').eq('variant_id', half))).length === 1
+    && (await must(a.from('company_variant_limits').select('min_stock'))).length === 0);
+  await fails('в видах товара порога больше нет', a.from('company_variants').select('min_stock').limit(1), 'min_stock');
+  await fails('чужому виду порог не назначить', s.from('company_variant_limits').insert({ variant_id: half, org_id: orgA, min_stock: 1 }), '');
+  await fails('напрямую остатки не удалить даже своей компании', s.from('company_stock').delete().eq('org_id', supOrg).select(), 'permission denied');
+  const anonDb = createClient(url, key, { auth: { persistSession: false } });
+  check('без входа видны города', (await must(anonDb.from('cities').select('id').limit(1))).length === 1);
+  await fails('без входа компании не читаются', anonDb.from('companies').select('org_id').limit(1), 'permission denied');
   await fails('отрицательный остаток отклонён', s.rpc('set_company_stock', { p_variant: half, p_branch: mainBranch.id, p_qty: -1 }), 'отрицательным');
   await fails('филиал со складом не удаляется', s.rpc('delete_company_branch', { p_branch: astanaBranch }), 'обнулите остатки');
   await must(s.rpc('archive_company_product', { p_product: kvas }));
@@ -547,6 +560,166 @@ async function main() {
     Number(halfStats.sold_qty) === 84 && Number(halfStats.sold_sum) === 84 * 200 && Number(halfStats.stock) === 30
     && Number(halfStats.reserved) === 0 && Number(halfStats.orders_count) === 2 && Number(halfStats.stores_count) === 1, halfStats);
   check('чужой не получает статистику компании', (await must(a.rpc('company_stats', { p_org: supOrg }))).length === 0);
+
+  console.log('Фото товара с компьютера');
+  const photoBytes = new Blob([new Uint8Array([0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x45, 0x42, 0x50])], { type: 'image/webp' });
+  const photoPath = `${supOrg}/${randomBytes(8).toString('hex')}.webp`;
+  await fails('магазин не кладёт фото в папку компании', a.storage.from('product-photos').upload(`${supOrg}/x.webp`, photoBytes, { contentType: 'image/webp' }), 'row-level security');
+  const putPhoto = await s.storage.from('product-photos').upload(photoPath, photoBytes, { contentType: 'image/webp' });
+  check('сотрудник компании загружает фото в свою папку', !putPhoto.error, putPhoto.error);
+  await fails('в хранилище фото попадают только картинки', s.storage.from('product-photos').upload(`${supOrg}/x.html`, new Blob(['<script>'], { type: 'text/html' }), { contentType: 'text/html' }), 'mime type');
+  const photoUrl = s.storage.from('product-photos').getPublicUrl(photoPath).data.publicUrl;
+  await must(s.from('company_products').update({ image_url: photoUrl }).eq('id', colaProduct.id));
+  check('ссылка на загруженное фото сохраняется в товаре и видна магазину',
+    (await must(a.rpc('store_offers', { p_store: store, p_barcodes: ['4870000009993'] })))[0]?.image_url === photoUrl);
+  check('фото открывается без входа', (await fetch(photoUrl)).ok);
+  await must(s.from('company_products').update({ image_url: '' }).eq('id', colaProduct.id));
+  await s.storage.from('product-photos').remove([photoPath]);
+
+  console.log('Загрузка остатков из файла');
+  await fails('магазин не загружает остатки компании', a.rpc('import_company_stock', { p_org: supOrg, p_rows: [] }), 'Нет доступа');
+  const stockUp = await must(s.rpc('import_company_stock', {
+    p_org: supOrg,
+    p_rows: [
+      { barcode: '4870000009991', branch_id: mainBranch.id, qty: 25 },
+      { barcode: '4870000009991', branch_id: astanaBranch, qty: 4 },
+      { barcode: '0000000000000', branch_id: mainBranch.id, qty: 1 },
+      { barcode: '4870000009992', branch_id: mainBranch.id, qty: -3 },
+    ],
+  }));
+  check('остатки по двум филиалам загружены, неизвестный штрихкод назван', stockUp.updated === 2 && stockUp.not_found.length === 1 && stockUp.not_found[0] === '0000000000000', stockUp);
+  const lemonade = await must(s.from('company_variants').select('id, track_stock, company_stock(branch_id, qty)').eq('org_id', supOrg).eq('barcode', '4870000009991').single());
+  check('загрузка включает учёт и ставит остаток в каждый филиал',
+    lemonade.track_stock === true && lemonade.company_stock.length === 2
+    && Number(lemonade.company_stock.find((x: Row) => x.branch_id === astanaBranch).qty) === 4, lemonade);
+  const stockAgain = await must(s.rpc('import_company_stock', { p_org: supOrg, p_rows: [{ barcode: '4870000009991', branch_id: mainBranch.id, qty: 25 }] }));
+  check('повторная загрузка тех же чисел ничего не меняет', stockAgain.updated === 0 && stockAgain.unchanged === 1, stockAgain);
+  await fails('чужой филиал в файле отклонён', s.rpc('import_company_stock', { p_org: supOrg, p_rows: [{ barcode: '4870000009991', branch_id: '00000000-0000-0000-0000-000000000000', qty: 1 }] }), 'Филиал не найден');
+
+  console.log('Профиль склада: свои цены, ассортимент, зона и условия');
+  const lemon = '4870000009991';
+  const lemonId = (await must(s.from('company_variants').select('id').eq('org_id', supOrg).eq('barcode', lemon).single())).id as string;
+  const offerFor = async (who: SupabaseClient, st: string) => (await must(who.rpc('store_offers', { p_store: st, p_barcodes: [lemon] })))[0] as Row | undefined;
+  check('без своих цен оба города видят базовую цену', Number((await offerFor(a, store))?.price) === 200 && Number((await offerFor(b, storeB))?.price) === 200);
+  await must(s.from('company_branches').update({ markup_pct: 10 }).eq('id', astanaBranch));
+  check('надбавка филиала: в Астане +10%, в Алматы без изменений', Number((await offerFor(b, storeB))?.price) === 220 && Number((await offerFor(a, store))?.price) === 200);
+  await fails('магазин не ставит цену филиалу', a.rpc('set_branch_price', { p_variant: lemonId, p_branch: astanaBranch, p_price: 1 }), 'Нет доступа');
+  await fails('цена чужого филиала не ставится', s.rpc('set_branch_price', { p_variant: lemonId, p_branch: '00000000-0000-0000-0000-000000000000', p_price: 1 }), 'Филиал не найден');
+  await must(s.rpc('set_branch_price', { p_variant: lemonId, p_branch: astanaBranch, p_price: 260 }));
+  check('своя цена вида в филиале важнее надбавки', Number((await offerFor(b, storeB))?.price) === 260 && Number((await offerFor(a, store))?.price) === 200);
+  const lemonStock = await must(s.from('company_stock').select('qty, price').eq('variant_id', lemonId).eq('branch_id', astanaBranch).single());
+  check('цена филиала не трогает его остаток', Number(lemonStock.qty) === 4 && Number(lemonStock.price) === 260, lemonStock);
+
+  await fails('минимальный заказ компании действует и в филиале',
+    b.rpc('place_order', { p_store: storeB, p_supplier: supOrg, p_items: [{ variant_id: lemonId, qty: 2 }] }), 'Минимальная сумма');
+  await must(s.from('company_branches').update({ min_order: 500 }).eq('id', astanaBranch));
+  check('свой минимальный заказ филиала виден магазину', Number((await offerFor(b, storeB))?.min_order) === 500 && Number((await offerFor(a, store))?.min_order) === 5000);
+  const branchOrder = await must(b.rpc('place_order', { p_store: storeB, p_supplier: supOrg, p_items: [{ variant_id: lemonId, qty: 2 }] })) as string;
+  const branchLine = await must(b.from('order_items').select('price, orders!inner(total, branch_id)').eq('order_id', branchOrder).single());
+  check('заказ оформлен по цене своего филиала', Number(branchLine.price) === 260 && Number(branchLine.orders.total) === 520 && branchLine.orders.branch_id === astanaBranch, branchLine);
+  await must(s.rpc('set_branch_price', { p_variant: lemonId, p_branch: astanaBranch, p_price: 300 }));
+  check('цена в уже оформленном заказе не меняется',
+    Number((await must(b.from('order_items').select('price').eq('order_id', branchOrder).single())).price) === 260);
+  await must(s.rpc('set_branch_price', { p_variant: lemonId, p_branch: astanaBranch, p_price: null }));
+  check('сброс своей цены возвращает базовую с надбавкой', Number((await offerFor(b, storeB))?.price) === 220);
+
+  await must(s.rpc('set_branch_listed', { p_variant: lemonId, p_branch: astanaBranch, p_listed: false }));
+  check('вид, который филиал не продаёт, его магазинам не виден, а остальным виден', (await offerFor(b, storeB)) === undefined && (await offerFor(a, store)) !== undefined);
+  await fails('и заказать его в этом филиале нельзя', b.rpc('place_order', { p_store: storeB, p_supplier: supOrg, p_items: [{ variant_id: lemonId, qty: 1 }] }), 'больше нет в каталоге');
+  await must(s.rpc('set_branch_listed', { p_variant: lemonId, p_branch: astanaBranch, p_listed: true }));
+
+  const karaganda = (await must(a.from('cities').select('id, region_id').eq('name', 'Караганда').single())) as { id: number; region_id: number };
+  const temirtau = (await must(a.from('cities').select('id, region_id').eq('name', 'Темиртау').single())) as { id: number; region_id: number };
+  const storeK = (await must(b.from('stores').insert({ org_id: orgB, name: 'Точка в Караганде', city_id: karaganda.id }).select().single())).id as string;
+  const storeT = (await must(b.from('stores').insert({ org_id: orgB, name: 'Точка в Темиртау', city_id: temirtau.id }).select().single())).id as string;
+  check('город вне зон обслуживает главный филиал', (await offerFor(b, storeK))?.branch_id === mainBranch.id);
+  await fails('магазин не меняет зону филиала', a.rpc('set_branch_zones', { p_branch: astanaBranch, p_regions: [karaganda.region_id], p_cities: [] }), 'Нет доступа');
+  await must(s.rpc('set_branch_zones', { p_branch: astanaBranch, p_regions: [], p_cities: [temirtau.id] }));
+  check('зона из одного города: Темиртау обслуживает филиал, Караганду — по-прежнему главный',
+    (await offerFor(b, storeT))?.branch_id === astanaBranch && (await offerFor(b, storeK))?.branch_id === mainBranch.id);
+  await must(s.rpc('set_branch_zones', { p_branch: astanaBranch, p_regions: [karaganda.region_id], p_cities: [temirtau.id] }));
+  const zones = await must(a.from('company_branch_zones').select('region_id, city_id').eq('branch_id', astanaBranch));
+  check('зона из области: вся область у филиала, город внутри области отдельно не хранится',
+    (await offerFor(b, storeK))?.branch_id === astanaBranch && Number((await offerFor(b, storeK))?.price) === 220
+    && zones.length === 1 && zones[0].region_id === karaganda.region_id, zones);
+  check('филиал в самом городе важнее чужой зоны', (await offerFor(a, store))?.branch_id === mainBranch.id);
+  await must(s.rpc('set_branch_zones', { p_branch: astanaBranch, p_regions: [], p_cities: [] }));
+  await must(b.from('stores').delete().in('id', [storeK, storeT]));
+
+  console.log('Аналитика компании по городам');
+  const geoFrom = new Date(Date.now() - 86400_000).toISOString();
+  const geoTo = new Date(Date.now() + 86400_000).toISOString();
+  const geo = await must(s.rpc('company_geo', { p_org: supOrg, p_from: geoFrom, p_to: geoTo }));
+  const geoOrders = await must(s.from('orders').select('total, store_org').eq('supplier_org', supOrg).neq('status', 'canceled'));
+  const geoItems = await must(s.from('order_items').select('qty, qty_shipped, price, orders!inner(status)').eq('supplier_org', supOrg).neq('orders.status', 'canceled'));
+  const geoSum = geoItems.reduce((t: number, i: Row) => t + Math.round(Number(i.qty_shipped ?? i.qty) * Number(i.price) * 100) / 100, 0);
+  check('аналитика: сумма по городам сходится с заказами',
+    geo.sales.length > 0 && Math.abs(geo.sales.reduce((t: number, r: Row) => t + Number(r.sum), 0) - geoSum) < 0.01, { geo: geo.sales, geoSum });
+  check('аналитика: города магазинов-покупателей — из их торговых точек',
+    geo.sales.every((r: Row) => [almaty, astana].includes(r.city_id)) && new Set(geo.sales.map((r: Row) => r.store_org)).size === new Set(geoOrders.map((o: Row) => o.store_org)).size, geo.sales);
+  const cityOrders = await must(s.from('orders').select('store_city_id, store_city, store_org').eq('supplier_org', supOrg));
+  check('заказ помнит город магазина ссылкой', cityOrders.length > 0 && cityOrders.every((o: Row) => [almaty, astana].includes(o.store_city_id) && o.store_city !== ''), cityOrders);
+  check('аналитика: магазины площадки посчитаны по городам', geo.market.some((m: Row) => m.city_id === almaty && Number(m.stores) >= 1), geo.market);
+  const geoPast = await must(s.rpc('company_geo', { p_org: supOrg, p_from: '2000-01-01', p_to: '2000-02-01' }));
+  check('аналитика: вне периода заказов нет, а рынок виден', geoPast.sales.length === 0 && geoPast.market.length > 0, geoPast);
+  await fails('чужой не получает аналитику компании', a.rpc('company_geo', { p_org: supOrg, p_from: geoFrom, p_to: geoTo }), 'Нет доступа');
+  await fails('магазину аналитика компании не положена', a.rpc('company_geo', { p_org: orgA, p_from: geoFrom, p_to: geoTo }), 'Нет доступа');
+
+  console.log('API для учётной системы');
+  // учётная система приходит без входа: только публичный ключ проекта и ключ компании в заголовке
+  const api = (apiKey?: string) => createClient(url, key, {
+    auth: { persistSession: false },
+    global: { headers: apiKey ? { 'X-Sauda-Key': apiKey } : {} },
+  });
+  await fails('магазин не выпускает ключ компании', a.rpc('create_api_key', { p_org: supOrg, p_name: '1С' }), 'Нет доступа');
+  await fails('магазину ключ API не положен', a.rpc('create_api_key', { p_org: orgA, p_name: '1С' }), 'Нет доступа');
+  const apiKey = await must(s.rpc('create_api_key', { p_org: supOrg, p_name: '1С склад' })) as string;
+  const keyRows = await must(s.from('company_api_keys').select('id, name, prefix, revoked_at').eq('org_id', supOrg));
+  check('ключ выдан, в списке только его начало', /^sauda_[0-9a-f]{64}$/.test(apiKey) && keyRows.length === 1 && apiKey.startsWith(keyRows[0].prefix) && keyRows[0].prefix.length < 20, keyRows);
+  await fails('хеш ключа не читается', s.from('company_api_keys').select('key_hash'), 'permission denied');
+  check('чужой не видит ключи компании', (await must(a.from('company_api_keys').select('id'))).length === 0);
+  await fails('запрос без ключа отклонён', api().rpc('api_ping'), 'X-Sauda-Key');
+  await fails('запрос с выдуманным ключом отклонён', api(`sauda_${'0'.repeat(64)}`).rpc('api_ping'), 'неверный или отозван');
+  const erp = api(apiKey);
+  check('проверка связи называет компанию', (await must(erp.rpc('api_ping'))).company === 'Завод напитков');
+  const apiBranches = await must(erp.rpc('api_branches'));
+  check('филиалы компании: главный первым', apiBranches.length === 2 && apiBranches[0].id === mainBranch.id && apiBranches[0].is_main === true, apiBranches);
+
+  const apiCode = `28${String(Math.floor(Math.random() * 1e11)).padStart(11, '0')}`;
+  const pushed = await must(erp.rpc('api_stock', {
+    items: [
+      { barcode: '4870000000011', price: 370, stock: 40 },
+      { barcode: '4870000009992', stock: 7 },
+      { barcode: apiCode, name: 'Морс клюквенный', label: '1 л', price: 450, stock: 12, category: 'Напитки' },
+      { barcode: `${apiCode}9` },
+      { barcode: '4870000009991', price: -5 },
+      { barcode: '' },
+    ],
+  }));
+  check('остатки и цены приняты: 2 обновлено, 1 создан, неизвестный и ошибочный названы',
+    pushed.updated === 2 && pushed.created === 1 && pushed.not_found.length === 1 && pushed.not_found[0] === `${apiCode}9`
+    && pushed.errors.length === 1 && pushed.errors[0].barcode === '4870000009991', pushed);
+  const apiCatalog = await must(erp.rpc('api_catalog'));
+  const apiRow = (barcode: string) => apiCatalog.find((r: Row) => r.barcode === barcode);
+  check('каталог отдаёт новые цену и остаток на главном филиале',
+    Number(apiRow('4870000000011').price) === 370 && Number(apiRow('4870000000011').stock[mainBranch.id]) === 40, apiRow('4870000000011'));
+  check('строка без цены цену не трогает', Number(apiRow('4870000009992').price) === 400 && Number(apiRow('4870000009992').stock[mainBranch.id]) === 7, apiRow('4870000009992'));
+  check('товар с названием создан', apiRow(apiCode)?.name === 'Морс клюквенный' && apiRow(apiCode).label === '1 л' && Number(apiRow(apiCode).stock[mainBranch.id]) === 12, apiRow(apiCode));
+  check('строка с ошибкой ничего не изменила', Number(apiRow('4870000009991').price) === 200, apiRow('4870000009991'));
+  await must(erp.rpc('api_stock', { items: [{ barcode: apiCode, stock: 3, price: 470 }], branch: astanaBranch }));
+  const morsRow = (await must(erp.rpc('api_catalog'))).find((r: Row) => r.barcode === apiCode);
+  check('цена со складом в запросе — это цена склада, базовая не меняется',
+    Number(morsRow.price) === 450 && Number(morsRow.prices[astanaBranch]) === 470 && Object.keys(morsRow.prices).length === 1, morsRow);
+  const morsMoves = await must(s.from('company_stock_moves').select('branch_id, delta, reason, company_variants!inner(barcode)').eq('company_variants.barcode', apiCode).order('id'));
+  check('остаток по филиалу и пометка «api» в истории',
+    morsMoves.length === 2 && morsMoves[1].branch_id === astanaBranch && Number(morsMoves[1].delta) === 3 && morsMoves.every((m: Row) => m.reason === 'api'), morsMoves);
+  const morsOffer = await must(a.rpc('store_offers', { p_store: store, p_barcodes: [apiCode] }));
+  check('магазин сразу видит товар, цену и остаток из учётной системы', morsOffer.length === 1 && Number(morsOffer[0].price) === 450 && Number(morsOffer[0].free) === 12, morsOffer);
+  await fails('чужой филиал не подставляется', erp.rpc('api_stock', { items: [], branch: '00000000-0000-0000-0000-000000000000' }), 'Филиал не найден');
+  await fails('items должен быть массивом', erp.rpc('api_stock', { items: { barcode: '1' } }), 'массив');
+  await fails('чужой не отзывает ключ', a.rpc('revoke_api_key', { p_key: keyRows[0].id }), 'Нет доступа');
+  await must(s.rpc('revoke_api_key', { p_key: keyRows[0].id }));
+  await fails('отозванный ключ больше не работает', erp.rpc('api_ping'), 'неверный или отозван');
 
   if (admin) {
 

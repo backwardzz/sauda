@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { generateBarcode } from '../../lib/barcode';
 import { parseNum } from '../../lib/format';
-import { findPhoto } from '../../lib/photo';
+import { findPhoto, removeProductPhoto, uploadProductPhoto } from '../../lib/photo';
 import { useCompany } from '../../lib/session';
 import { db, q } from '../../lib/supabase';
 import { UNITS, type CompanyProduct, type Unit, type Variant } from '../../lib/types';
@@ -9,6 +9,7 @@ import { fullName, sizeHints, splitName } from '../../lib/variants';
 import { Icon } from '../../ui/Icon';
 import { Modal } from '../../ui/Modal';
 import { ProductImage } from '../../ui/ProductImage';
+import { SuggestInput } from '../../ui/SuggestInput';
 import { toast } from '../../ui/toast';
 
 interface Row {
@@ -64,6 +65,10 @@ export function ProductEditor({ product, variants = [], stock, duplicate, catego
   );
   const [busy, setBusy] = useState(false);
   const [looking, setLooking] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const file = useRef<HTMLInputElement>(null);
+  /** Ссылки на фото, загруженные с компьютера в этом окне. */
+  const uploaded = useRef(new Set<string>());
 
   const patch = (key: number, p: Partial<Row>) => setRows((list) => list.map((r) => (r.key === key ? { ...r, ...p } : r)));
   const add = (label = '') =>
@@ -100,9 +105,36 @@ export function ProductEditor({ product, variants = [], stock, duplicate, catego
     setForm((f) => ({ ...f, image: url }));
   };
 
+  // Фото с компьютера: файл уходит в хранилище, ссылка подставляется в товар.
+  // У существующего товара она записывается сразу, у нового — вместе с остальными полями при публикации.
+  const upload = async (f: File | undefined) => {
+    if (!f) return;
+    setUploading(true);
+    try {
+      const url = await uploadProductPhoto(org.id, f);
+      const before = form.image.trim();
+      setForm((cur) => ({ ...cur, image: url }));
+      if (!isNew) {
+        await q(db.from('company_products').update({ image_url: url }).eq('id', product!.id));
+        toast.ok('Фото загружено и сохранено в товаре');
+        onSaved(product!.id);
+      } else toast.ok('Фото загружено: оно сохранится вместе с товаром');
+      // прежний файл убираем, только если он загружен в этом же окне: у копии товара фото общее с оригиналом
+      if (uploaded.current.has(before)) void removeProductPhoto(before);
+      uploaded.current.add(url);
+    } catch (e) {
+      toast.error(e);
+    } finally {
+      setUploading(false);
+      if (file.current) file.current.value = '';
+    }
+  };
+
   const save = async (more: boolean) => {
     if (!form.name.trim()) return toast.error('Укажите название товара');
-    if (form.image.trim() && !/^https:\/\//i.test(form.image.trim())) return toast.error('Ссылка на фото должна начинаться с https://');
+    if (form.image.trim() && !/^https:\/\//i.test(form.image.trim()) && !uploaded.current.has(form.image.trim()) && form.image.trim() !== product?.image_url) {
+      return toast.error('Ссылка на фото должна начинаться с https://');
+    }
     const labels = rows.map((r) => r.label.trim().toLowerCase());
     if (rows.length > 1 && new Set(labels).size < labels.length) return toast.error('У видов должны быть разные подписи: например, «0,5 л» и «1 л»');
     setBusy(true);
@@ -149,18 +181,21 @@ export function ProductEditor({ product, variants = [], stock, duplicate, catego
             <span>Название товара <b>*</b></span>
             <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} autoFocus placeholder="Coca-Cola" />
           </label>
-          <label className="field">
+          <div className="field">
             <span>Категория</span>
-            <input value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} list="company-categories" placeholder="Напитки" />
-            <datalist id="company-categories">{categories.map((c) => <option key={c} value={c} />)}</datalist>
-          </label>
+            <SuggestInput value={form.category} onChange={(category) => setForm((cur) => ({ ...cur, category }))} options={categories} placeholder="Напитки" aria-label="Категория" />
+          </div>
           <div className="field wide">
-            <span>Фото товара (ссылка)</span>
+            <span>Фото товара: с компьютера, по штрихкоду или ссылкой</span>
             <div className="input-group">
-              <input value={form.image} onChange={(e) => setForm({ ...form, image: e.target.value })} placeholder="https://…" inputMode="url" />
+              <input ref={file} type="file" accept="image/png,image/jpeg,image/webp" hidden onChange={(e) => upload(e.target.files?.[0])} />
+              <button type="button" className="btn" disabled={uploading} onClick={() => file.current?.click()} title="Картинка PNG, JPG или WebP: сожмётся сама">
+                <Icon name="upload" size={16} />{uploading ? 'Загружаем…' : 'С компьютера'}
+              </button>
               <button type="button" className="btn" disabled={looking} onClick={photo} title="Ищет фото по заводскому штрихкоду в открытых базах товаров">
                 <Icon name="search" size={16} />{looking ? 'Ищем…' : 'Найти по штрихкоду'}
               </button>
+              <input value={form.image} onChange={(e) => setForm({ ...form, image: e.target.value })} placeholder="или ссылка https://…" inputMode="url" aria-label="Ссылка на фото" />
             </div>
           </div>
           <label className="field wide">

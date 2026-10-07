@@ -11,8 +11,11 @@ export const ROLE_LABEL: Record<Role, string> = {
 export interface City {
   id: number;
   name: string;
-  /** У городов республиканского значения области нет. */
+  region_id: number;
+  /** Название области; у Астаны, Алматы и Шымкента — «Города республиканского значения». */
   region: string;
+  /** Порядок области в списках: 0 — города республиканского значения. */
+  region_sort: number;
 }
 
 export type OrgKind = 'store' | 'company';
@@ -69,6 +72,12 @@ export interface Branch {
   manager_name: string;
   work_hours: string;
   is_main: boolean;
+  /** Надбавка филиала ко всему прайсу компании, %; отрицательная — скидка. */
+  markup_pct: number;
+  /** Свой минимальный заказ; null — как у компании. */
+  min_order: number | null;
+  /** Свои условия доставки; пусто — как у компании. */
+  delivery_note: string;
   created_at: string;
 }
 

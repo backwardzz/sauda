@@ -8,23 +8,38 @@ export interface CompanyCatalog {
   variants: Map<string, Variant[]>;
   /** Вид → филиал → остаток. */
   stock: Map<string, Record<string, number>>;
+  /** Вид → филиал → своя цена филиала. Нет записи — базовая цена с надбавкой филиала. */
+  prices: Map<string, Record<string, number>>;
+  /** Вид → филиалы, которые его не продают. */
+  unlisted: Map<string, Record<string, true>>;
   stats: Map<string, VariantStats>;
 }
 
 /** Каталог компании целиком: товары, виды, остатки по филиалам и продажи. */
 export function useCompanyCatalog(orgId: string) {
   return useQuery<CompanyCatalog>(async () => {
-    const [products, variants, stock, stats] = await Promise.all([
+    const [products, rows, limits, stock, stats] = await Promise.all([
       q<CompanyProduct[]>(db.from('company_products').select('*').eq('org_id', orgId).eq('archived', false).order('name').limit(5000)),
-      q<Variant[]>(db.from('company_variants').select('*').eq('org_id', orgId).eq('archived', false).order('sort').order('price').limit(20000)),
-      q<{ variant_id: string; branch_id: string; qty: number }[]>(db.from('company_stock').select('variant_id, branch_id, qty').eq('org_id', orgId).limit(50000)),
+      q<Omit<Variant, 'min_stock'>[]>(db.from('company_variants').select('*').eq('org_id', orgId).eq('archived', false).order('sort').order('price').limit(20000)),
+      // порог «мало на складе» лежит отдельно: его видят только сотрудники компании, а виды товара — все магазины
+      q<{ variant_id: string; min_stock: number }[]>(db.from('company_variant_limits').select('variant_id, min_stock').eq('org_id', orgId).limit(20000)),
+      q<{ variant_id: string; branch_id: string; qty: number; price: number | null; listed: boolean }[]>(
+        db.from('company_stock').select('variant_id, branch_id, qty, price, listed').eq('org_id', orgId).limit(50000)),
       q<VariantStats[]>(db.rpc('company_stats', { p_org: orgId })),
     ]);
+    const minStock = new Map(limits.map((l) => [l.variant_id, Number(l.min_stock)]));
+    const variants: Variant[] = rows.map((v) => ({ ...v, min_stock: minStock.get(v.id) ?? null }));
     const byProduct = new Map<string, Variant[]>();
     for (const v of variants) byProduct.set(v.product_id, [...(byProduct.get(v.product_id) ?? []), v]);
     const byVariant = new Map<string, Record<string, number>>();
-    for (const s of stock) byVariant.set(s.variant_id, { ...(byVariant.get(s.variant_id) ?? {}), [s.branch_id]: Number(s.qty) });
-    return { products, variants: byProduct, stock: byVariant, stats: new Map(stats.map((s) => [s.variant_id, s])) };
+    const prices = new Map<string, Record<string, number>>();
+    const unlisted = new Map<string, Record<string, true>>();
+    for (const s of stock) {
+      byVariant.set(s.variant_id, { ...(byVariant.get(s.variant_id) ?? {}), [s.branch_id]: Number(s.qty) });
+      if (s.price != null) prices.set(s.variant_id, { ...(prices.get(s.variant_id) ?? {}), [s.branch_id]: Number(s.price) });
+      if (!s.listed) unlisted.set(s.variant_id, { ...(unlisted.get(s.variant_id) ?? {}), [s.branch_id]: true });
+    }
+    return { products, variants: byProduct, stock: byVariant, prices, unlisted, stats: new Map(stats.map((s) => [s.variant_id, s])) };
   }, [orgId]);
 }
 

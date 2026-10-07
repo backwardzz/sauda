@@ -6,6 +6,8 @@ interface Props {
   value: number | null;
   /** Сохраняет новое значение; при ошибке поле возвращается к прежнему. */
   onSave: (n: number) => Promise<unknown>;
+  /** Стёрли значение. Без обработчика пустое поле просто возвращается к прежнему числу. */
+  onClear?: () => Promise<unknown>;
   disabled?: boolean;
   placeholder?: string;
   'aria-label': string;
@@ -14,17 +16,18 @@ interface Props {
 const show = (v: number | null) => (v == null ? '' : String(Number(v)));
 
 /** Число прямо в таблице: правится на месте, сохраняется по Enter или при уходе из поля, Esc отменяет. */
-export function NumCell({ value, onSave, disabled, placeholder, ...rest }: Props) {
+export function NumCell({ value, onSave, onClear, disabled, placeholder, ...rest }: Props) {
   const [text, setText] = useState(show(value));
   const [busy, setBusy] = useState(false);
   useEffect(() => setText(show(value)), [value]);
 
   const commit = async () => {
     const n = Math.max(parseNum(text), 0);
-    if (text.trim() === '' || n === Number(value ?? NaN)) return setText(show(value));
+    const clear = text.trim() === '' && value != null && !!onClear;
+    if (!clear && (text.trim() === '' || n === Number(value ?? NaN))) return setText(show(value));
     setBusy(true);
     try {
-      await onSave(n);
+      await (clear ? onClear!() : onSave(n));
     } catch (e) {
       toast.error(e);
       setText(show(value));

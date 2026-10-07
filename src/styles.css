@@ -82,6 +82,30 @@ input[type='search'], input:not([type]), select, textarea {
   background: var(--surface); min-width: 0;
 }
 textarea { height: auto; padding: 8px 10px; resize: vertical; }
+select {
+  appearance: none; padding-right: 28px; cursor: pointer; text-overflow: ellipsis;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12' fill='none' stroke='%238a90a2' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 4.5l3 3 3-3'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 9px center;
+}
+/* Раскрытый список в своём оформлении вместо системного. Где браузер этого не умеет, остаётся системный список. */
+@supports (appearance: base-select) {
+  select, select::picker(select) { appearance: base-select; }
+  select { align-items: center; white-space: nowrap; }
+  select::picker-icon { display: none; }
+  select::picker(select) {
+    margin-top: 6px; min-width: anchor-size(width); max-height: 296px; overflow: auto; padding: 6px;
+    background: var(--surface); border: 1px solid var(--line); border-radius: 12px;
+    box-shadow: 0 12px 32px rgba(23, 27, 45, 0.14), 0 2px 6px rgba(23, 27, 45, 0.06);
+    scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent;
+  }
+  select option { display: flex; align-items: center; gap: 12px; padding: 8px 10px; border-radius: 8px; cursor: pointer; white-space: nowrap; }
+  select option:hover, select option:focus-visible { background: var(--accent-weak); outline: 0; }
+  select option:checked { color: var(--accent); font-weight: 600; }
+  select option:disabled { color: var(--muted); cursor: default; }
+  select option::checkmark { order: 1; margin-left: auto; content: ''; width: 11px; height: 6px; margin-top: -3px; border-left: 2px solid var(--accent); border-bottom: 2px solid var(--accent); transform: rotate(-45deg); }
+  select option:not(:checked)::checkmark { display: none; }
+  select optgroup { padding-top: 6px; font-size: 11px; font-weight: 650; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+}
 input:focus, select:focus, textarea:focus, .btn:focus-visible, .icon-btn:focus-visible {
   outline: 2px solid var(--accent); outline-offset: -1px; border-color: var(--accent);
 }
@@ -93,6 +117,77 @@ input[type='checkbox'] { width: 16px; height: 16px; accent-color: var(--accent);
 .field > span { font-size: 13px; color: var(--muted); }
 .field > span b { color: var(--danger); font-weight: 600; }
 .field input, .field select, .field textarea { width: 100%; }
+code { padding: 1px 5px; border-radius: 4px; background: var(--surface-2); font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; font-size: 0.92em; }
+.code-block { margin: 0; padding: 12px 14px; border-radius: 8px; background: var(--surface-2); font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; font-size: 12.5px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
+.api-docs { margin-top: 12px; }
+.api-docs > summary { cursor: pointer; font-weight: 600; }
+.api-docs[open] > summary { margin-bottom: 12px; }
+.api-docs > p, .api-docs > .code-block { margin-bottom: 10px; }
+/* ── Аналитика компании по областям и городам ── */
+.geo-row { align-items: start; margin-bottom: 14px; }
+.geo-row .card-head .muted { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.geo-line { display: flex; align-items: center; gap: 4px; width: 100%; padding: 0 8px; border: 0; border-bottom: 1px solid var(--line); background: transparent; text-align: left; }
+.geo-line:last-child { border-bottom: 0; }
+button.geo-line, .geo-pick { cursor: pointer; }
+button.geo-line { gap: 10px; padding: 9px 16px; }
+.geo-pick { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; padding: 9px 8px 9px 0; border: 0; background: transparent; text-align: left; }
+.geo-line:hover { background: var(--surface-2); }
+.geo-line.active { background: var(--accent-weak); box-shadow: inset 3px 0 0 var(--accent); }
+.geo-line.nested { padding-left: 38px; background: var(--surface-2); }
+.geo-line.nested.active { background: var(--accent-weak); }
+.geo-toggle:disabled { visibility: hidden; }
+.geo-name { flex: 0 0 34%; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.geo-bar { flex: 1; min-width: 40px; height: 8px; }
+.geo-bar > i { display: block; height: 100%; border-radius: 0 4px 4px 0; background: var(--accent); }
+.geo-bar.none { height: auto; }
+.geo-value { flex: 0 0 auto; min-width: 70px; text-align: right; }
+.geo-note { flex: 0 0 auto; min-width: 112px; text-align: right; font-size: 12.5px; white-space: nowrap; }
+.geo-more { display: flex; align-items: center; gap: 6px; width: 100%; padding: 9px 16px; border: 0; border-bottom: 1px solid var(--line); background: var(--surface-2); color: var(--muted); font-size: 13px; cursor: pointer; text-align: left; }
+.geo-more:last-child { border-bottom: 0; }
+.geo-matrix-wrap { overflow: auto; max-height: 520px; scrollbar-width: thin; }
+.geo-matrix { border-collapse: separate; border-spacing: 2px; width: 100%; padding: 8px 12px 12px; font-size: 13px; }
+.geo-matrix th { font-weight: 500; text-align: left; white-space: nowrap; background: var(--surface); }
+.geo-matrix thead th { position: sticky; top: 0; z-index: 2; padding: 4px 2px 6px; vertical-align: bottom; font-size: 12px; color: var(--muted); text-align: center; white-space: normal; min-width: 76px; }
+.geo-matrix thead th:first-child { text-align: left; }
+.geo-matrix tbody th { position: sticky; left: 0; z-index: 1; max-width: 220px; overflow: hidden; text-overflow: ellipsis; padding-right: 10px; }
+.geo-matrix th button { padding: 2px 4px; border: 0; border-radius: 4px; background: transparent; cursor: pointer; text-align: inherit; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.geo-matrix th button:hover { background: var(--surface-2); }
+.geo-matrix th.active button, .geo-matrix tr.active th button { background: var(--accent-weak); color: var(--accent); font-weight: 600; }
+.geo-matrix td { height: 30px; min-width: 76px; padding: 0 6px; border-radius: 4px; background: var(--surface-2); text-align: center; font-variant-numeric: tabular-nums; cursor: pointer; }
+.geo-matrix td.dark { color: #fff; }
+.geo-matrix td:hover { outline: 2px solid var(--accent); outline-offset: -1px; }
+.geo-map-box { padding: 14px 16px 16px; }
+.geo-map-title { margin-bottom: 10px; font-size: 13px; }
+.geo-map { display: block; width: 100%; max-width: 1040px; height: auto; margin: 0 auto; }
+.geo-shape { cursor: pointer; }
+.geo-shape path, .geo-shape > circle:not(.geo-shape-dot) { fill: #dfe2ec; stroke: var(--surface); stroke-width: 1.5; stroke-linejoin: round; transition: fill 0.15s; }
+.geo-shape.off { cursor: default; }
+.geo-shape.off path, .geo-shape.off > circle:not(.geo-shape-dot) { fill: #f0f1f6; }
+.geo-shape:not(.off):hover path, .geo-shape:not(.off):hover > circle:not(.geo-shape-dot) { stroke: var(--accent); stroke-width: 2; }
+.geo-shape.active path, .geo-shape.active > circle:not(.geo-shape-dot) { stroke: var(--accent); stroke-width: 3; }
+.geo-shape.city > circle:not(.geo-shape-dot) { stroke: var(--text); stroke-width: 1.5; }
+.geo-shape text { pointer-events: none; paint-order: stroke; stroke: rgba(255, 255, 255, 0.75); stroke-width: 3px; stroke-linejoin: round; }
+.geo-shape-name { font-size: 11.5px; fill: var(--text); }
+.geo-shape.off .geo-shape-name { fill: var(--muted); }
+.geo-shape-value { font-size: 13px; font-weight: 700; fill: var(--text); font-variant-numeric: tabular-nums; }
+.geo-shape.dark:not(.city) text { fill: #fff; stroke: rgba(40, 36, 150, 0.55); }
+.geo-shape-dot { fill: var(--warn); stroke: var(--surface); stroke-width: 1; pointer-events: none; }
+.geo-map-note { margin-top: 12px; font-size: 12.5px; text-align: center; }
+.geo-matrix-card .card-head { flex-wrap: wrap; }
+.geo-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--warn); }
+.geo-legend { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; }
+.cell-off { background: repeating-linear-gradient(135deg, transparent 0 6px, var(--surface-2) 6px 12px); }
+.cell-off input { opacity: 0.55; }
+.th-note { font-size: 11.5px; font-weight: 400; }
+.zone-box { max-height: 220px; overflow: auto; padding: 8px 10px; border: 1px solid var(--line-strong); border-radius: 8px; scrollbar-width: thin; display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 2px 12px; }
+.zone-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.zone-chips .badge button { margin-left: 2px; padding: 0; border: 0; background: none; color: inherit; cursor: pointer; line-height: 1; }
+.soon-btn { justify-content: flex-start; }
+.soon-btn:disabled { opacity: 1; color: var(--muted); border-style: dashed; cursor: not-allowed; }
+.soon-btn .badge { margin-left: auto; }
+.phone-input { position: relative; }
+.phone-input > span { position: absolute; left: 7px; top: 50%; transform: translateY(-50%); padding: 1px 5px; border-radius: 4px; background: var(--surface-2); color: var(--muted); font-size: 11.5px; font-weight: 600; letter-spacing: 0.03em; pointer-events: none; }
+.phone-input > input { width: 100%; padding-left: 40px; }
 .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 16px; }
 .form-grid .wide { grid-column: 1 / -1; }
 .input-group { display: flex; gap: 6px; }
@@ -170,10 +265,12 @@ input[type='checkbox'] { width: 16px; height: 16px; accent-color: var(--accent);
 .popover-anchor { position: relative; display: inline-block; }
 .popover {
   position: absolute; top: calc(100% + 4px); left: 0; z-index: 40; min-width: 200px; padding: 10px 12px;
-  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow);
+  background: var(--surface); border: 1px solid var(--line); border-radius: 12px;
+  box-shadow: 0 12px 32px rgba(23, 27, 45, 0.14), 0 2px 6px rgba(23, 27, 45, 0.06);
   text-align: left; font-weight: 400; color: var(--text); font-size: 14px; white-space: normal;
 }
 .popover.right { left: auto; right: 0; }
+.popover.fixed { position: fixed; left: auto; max-height: calc(100vh - 24px); overflow: auto; scrollbar-width: thin; }
 .popover-title { margin-bottom: 4px; font-size: 12.5px; font-weight: 600; color: var(--muted); }
 .menu-item { display: flex; align-items: center; gap: 8px; width: 100%; padding: 7px 8px; border: 0; border-radius: 6px; background: transparent; cursor: pointer; text-align: left; }
 .menu-item:hover { background: var(--surface-2); }
@@ -320,6 +417,18 @@ input[type='checkbox'] { width: 16px; height: 16px; accent-color: var(--accent);
 .auth { min-height: 100%; display: grid; place-items: center; padding: 24px; }
 .auth-card.wide { max-width: 620px; }
 .auth-card { width: 100%; max-width: 400px; padding: 28px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow); }
+.auth-card.stack { gap: 8px; }
+.auth-card .field { gap: 3px; }
+.auth-card .form-grid { gap: 8px 12px; }
+.auth-card > .btn { margin-top: 6px; height: 38px; font-size: 14px; }
+.auth-card h2 { margin-top: 10px; }
+.auth-card input.code-input { height: 52px; text-align: center; font-size: 26px; font-weight: 600; letter-spacing: 0.35em; padding-left: 0.35em; font-variant-numeric: tabular-nums; }
+.auth-card input.code-input::placeholder { color: var(--line-strong); font-weight: 500; }
+.auth-links { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.link-btn { padding: 0; border: 0; background: none; color: var(--accent); font-size: 13px; cursor: pointer; }
+.link-btn:hover:not(:disabled) { text-decoration: underline; }
+.link-btn:disabled { color: var(--muted); cursor: default; }
+.captcha { min-height: 65px; }
 .auth-card .brand { margin: 0 0 6px; font-size: 20px; }
 .auth-card .brand-mark { width: 34px; height: 34px; font-size: 18px; }
 
@@ -365,13 +474,29 @@ input[type='checkbox'] { width: 16px; height: 16px; accent-color: var(--accent);
 
 /* ── Выбор города, логотип ── */
 .combo { position: relative; }
-.combo > input { width: 100%; }
-.combo-list { position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 60; min-width: 240px; max-height: 280px; overflow: auto; padding: 4px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); }
-.combo-list button { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; width: 100%; padding: 7px 10px; border: 0; border-radius: 6px; background: transparent; cursor: pointer; text-align: left; }
+.combo > input {
+  width: 100%; padding-right: 28px; text-overflow: ellipsis;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12' fill='none' stroke='%238a90a2' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 4.5l3 3 3-3'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 9px center;
+}
+.combo-list {
+  position: absolute; top: calc(100% + 6px); left: 0; right: 0; z-index: 60; min-width: 292px; max-height: 296px; overflow: auto; overscroll-behavior: contain;
+  padding: 6px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px;
+  box-shadow: 0 12px 32px rgba(23, 27, 45, 0.14), 0 2px 6px rgba(23, 27, 45, 0.06);
+  scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent;
+  animation: combo-in 0.12s ease-out;
+}
+@keyframes combo-in { from { opacity: 0; transform: translateY(-4px); } }
+.combo-list button { display: flex; align-items: center; gap: 12px; width: 100%; padding: 8px 10px; border: 0; border-radius: 8px; background: transparent; cursor: pointer; text-align: left; }
+.combo-list button > span:first-child { flex: 1; min-width: 0; }
 .combo-list button .muted { font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.combo-list button.active { background: var(--surface-2); }
-.combo-list button.selected { color: var(--accent); font-weight: 550; }
-.combo-empty { padding: 10px; color: var(--muted); }
+.combo-list button.active { background: var(--accent-weak); }
+.combo-list button.selected { color: var(--accent); font-weight: 600; }
+.combo-list button.selected::after { content: ''; flex: none; width: 11px; height: 6px; margin: -3px 2px 0 0; border-left: 2px solid var(--accent); border-bottom: 2px solid var(--accent); transform: rotate(-45deg); }
+.combo-empty { padding: 14px 10px; color: var(--muted); text-align: center; }
+/* заголовок области остаётся наверху, пока листаются её города */
+.combo-group { position: sticky; top: -6px; z-index: 1; margin: 0 -6px; padding: 12px 16px 5px; background: var(--surface); font-size: 11px; font-weight: 650; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.combo-group:first-child { padding-top: 8px; }
 .logo-upload { display: flex; flex-direction: column; align-items: center; gap: 4px; flex: none; }
 .logo-button { position: relative; padding: 0; border: 0; border-radius: 50%; background: transparent; cursor: pointer; }
 .logo-button:hover .company-avatar { box-shadow: 0 0 0 3px var(--accent-weak); }
@@ -416,7 +541,7 @@ input[type='checkbox'] { width: 16px; height: 16px; accent-color: var(--accent);
 .variant-table.compact input.cell-num { width: 72px; }
 .variant-table.compact input.cell-label { width: 116px; }
 .variant-table.compact input.cell-barcode { width: 138px; }
-.variant-table.compact select { padding: 0 4px; }
+.variant-table.compact select { min-width: 58px; padding: 0 22px 0 8px; background-position: right 6px center; }
 .table tr.row-off td { color: var(--muted); background: var(--surface-2); }
 .row.clickable { cursor: pointer; }
 .product-top { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 14px; margin-bottom: 4px; align-items: start; }

@@ -18,6 +18,30 @@ function load(file: File): Promise<HTMLImageElement> {
 }
 
 /**
+ * Фото товара из файла: уменьшается до max по большей стороне и сжимается, прозрачный фон становится белым.
+ * Телефонный снимок на 5 МБ превращается в файл на 50–150 КБ — столько весит картинка в списке товаров.
+ */
+export async function fileToPhoto(file: File, max = 1000): Promise<Blob> {
+  if (!file.type.startsWith('image/')) throw new Error('Выберите картинку: PNG, JPG или WebP');
+  const img = await load(file);
+  const scale = Math.min(1, max / Math.max(img.width, img.height));
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, Math.round(img.width * scale));
+  canvas.height = Math.max(1, Math.round(img.height * scale));
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('Браузер не смог обработать картинку');
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+  const encode = (type: string) => new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, type, 0.85));
+  // браузер без WebP молча отдаёт PNG — тогда берём JPEG
+  let blob = await encode('image/webp');
+  if (blob?.type !== 'image/webp') blob = await encode('image/jpeg');
+  if (!blob) throw new Error('Браузер не смог обработать картинку');
+  return blob;
+}
+
+/**
  * Логотип из файла: картинка вписывается в белый квадрат и сжимается, чтобы храниться прямо в базе
  * и не тормозить списки. Хранилища файлов у площадки нет.
  */

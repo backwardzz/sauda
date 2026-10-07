@@ -22,6 +22,8 @@ jobs:
     env:
       VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL || 'https://vwsjgqqtrqrayyyhavju.supabase.co' }}
       VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY || 'sb_publishable_5GFbbpwjzqzXNZzRM3FRaQ_CeHA-9Xa' }}
+      # Ключ сайта Cloudflare Turnstile (тоже публичный). Пока переменная не задана, сайт собирается без капчи.
+      VITE_TURNSTILE_SITE_KEY: ${{ vars.VITE_TURNSTILE_SITE_KEY }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

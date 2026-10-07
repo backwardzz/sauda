@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { useCities } from '../lib/cities';
 import type { City } from '../lib/types';
 
@@ -43,6 +43,8 @@ export function CitySelect({ value, onChange, placeholder = 'Начните вв
     }
     return [...starts, ...rest];
   }, [cities, text]);
+
+  const grouped = !text.trim();
 
   const pick = (c: City | null) => {
     onChange(c?.id ?? null);
@@ -93,18 +95,21 @@ export function CitySelect({ value, onChange, placeholder = 'Начните вв
           )}
           {list.length === 0 && <div className="combo-empty">{cities.length ? 'Такого города нет в списке' : 'Загрузка…'}</div>}
           {list.map((c, i) => (
-            <button
-              type="button"
-              key={c.id}
-              role="option"
-              aria-selected={c.id === value}
-              className={[i === active ? 'active' : '', c.id === value ? 'selected' : ''].join(' ')}
-              onMouseEnter={() => setActive(i)}
-              onClick={() => pick(c)}
-            >
-              <span>{c.name}</span>
-              {c.region && <span className="muted">{c.region}</span>}
-            </button>
+            <Fragment key={c.id}>
+              {/* без поиска список идёт по областям с заголовками; при поиске область подписана в строке */}
+              {grouped && c.region_id !== list[i - 1]?.region_id && <div className="combo-group">{c.region}</div>}
+              <button
+                type="button"
+                role="option"
+                aria-selected={c.id === value}
+                className={[i === active ? 'active' : '', c.id === value ? 'selected' : ''].join(' ')}
+                onMouseEnter={() => setActive(i)}
+                onClick={() => pick(c)}
+              >
+                <span>{c.name}</span>
+                {!grouped && c.region_sort > 0 && <span className="muted">{c.region}</span>}
+              </button>
+            </Fragment>
           ))}
         </div>
       )}

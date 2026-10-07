@@ -403,7 +403,7 @@ async function main() {
   await must(rep.rpc('set_company_stock', { p_variant: soldOut.id, p_branch: sweets.main, p_qty: 0, p_comment: 'Ждём поставку' }));
   for (const [k, c] of companyOrgs.entries()) {
     const v = c.items[c.items.length - 1 - k];
-    await must(rep.from('company_variants').update({ min_stock: Number(v.pack_qty) * 5 }).eq('id', v.id));
+    await must(rep.from('company_variant_limits').upsert({ variant_id: v.id, org_id: c.id, min_stock: Number(v.pack_qty) * 5 }));
     await must(rep.rpc('set_company_stock', { p_variant: v.id, p_branch: c.main, p_qty: Number(v.pack_qty) * 3 }));
   }
 
