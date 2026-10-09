@@ -4,7 +4,7 @@ import { cityName, useCities } from '../../lib/cities';
 import { dateOnly, formatPhone, money, parseNum } from '../../lib/format';
 import { useOrg } from '../../lib/session';
 import { db, q } from '../../lib/supabase';
-import { COMPANY_TYPE, type CompanyType } from '../../lib/types';
+import { COMPANY_TYPE, type CompanyType, type PriceAccessMode } from '../../lib/types';
 import { VerifiedBadge } from '../../ui/CompanyAvatar';
 import { Icon } from '../../ui/Icon';
 import { LogoUpload } from '../../ui/LogoUpload';
@@ -93,6 +93,11 @@ export function Profile() {
               <dt>Минимальный заказ</dt><dd>{Number(company.min_order) > 0 ? `${money(company.min_order)} ${org.currency}` : 'без ограничения'}</dd>
               <dt>Доставка</dt><dd>{company.delivery_note || '—'}</dd>
               <dt>Оплата</dt><dd>{company.payment_terms || '—'}</dd>
+              <dt>Цены видят</dt>
+              <dd>
+                {company.price_access === 'approved' ? 'только одобренные магазины' : 'все магазины'}
+                {' · '}<Link to="/price-access">запросы и доступы</Link>
+              </dd>
             </dl>
           </div>
         )}
@@ -126,6 +131,7 @@ function ProfileEditor({ onClose }: { onClose: () => void }) {
     name: org.name, phone: org.phone, email: org.email, contact: org.contact_name, bin: org.bin,
     type: (company?.company_type ?? 'distributor') as CompanyType, description: company?.description ?? '', website: company?.website ?? '',
     min: Number(company?.min_order) ? String(Number(company?.min_order)) : '', delivery: company?.delivery_note ?? '', payment: company?.payment_terms ?? '',
+    prices: (company?.price_access ?? 'stores') as PriceAccessMode,
   });
   const [busy, setBusy] = useState(false);
   const set = (patch: Partial<typeof form>) => setForm({ ...form, ...patch });
@@ -144,6 +150,7 @@ function ProfileEditor({ onClose }: { onClose: () => void }) {
         await q(db.from('companies').update({
           company_type: form.type, description: form.description.trim(), website,
           min_order: Math.max(parseNum(form.min), 0), delivery_note: form.delivery.trim(), payment_terms: form.payment.trim(),
+          price_access: form.prices,
         }).eq('org_id', org.id));
       }
       toast.ok('Профиль сохранён');
@@ -218,6 +225,18 @@ function ProfileEditor({ onClose }: { onClose: () => void }) {
             <label className="field wide">
               <span>Условия оплаты</span>
               <input value={form.payment} onChange={(e) => set({ payment: e.target.value })} placeholder="Наличными или переводом при получении, отсрочка 7 дней" />
+            </label>
+            <label className="field wide">
+              <span>Кому видны цены и остатки</span>
+              <select value={form.prices} onChange={(e) => set({ prices: e.target.value as PriceAccessMode })}>
+                <option value="stores">Всем магазинам на площадке</option>
+                <option value="approved">Только магазинам, которым я открыл прайс</option>
+              </select>
+              <small className="hint">
+                {form.prices === 'approved'
+                  ? 'Магазин видит каталог без цен и отправляет запрос. Магазины, которые уже заказывали, получат доступ сразу.'
+                  : 'Другие компании ваших цен не видят никогда.'}
+              </small>
             </label>
           </>
         )}

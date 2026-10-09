@@ -58,6 +58,8 @@ export interface Company {
   min_order: number;
   delivery_note: string;
   payment_terms: string;
+  /** Кому видны цены: всем магазинам или только одобренным (запрос прайса). */
+  price_access: PriceAccessMode;
   /** Отметку «Подтверждённая компания» ставит администратор площадки. */
   verified: boolean;
   created_at: string;
@@ -153,6 +155,17 @@ export const STOCK_REASON: Record<StockMoveRow['reason'], string> = {
 };
 
 /** Строка функции store_offers: вид товара компании глазами магазина. */
+/** Кому компания показывает цены: всем магазинам или только одобренным. */
+export type PriceAccessMode = 'stores' | 'approved';
+export type PriceAccessStatus = 'pending' | 'approved' | 'declined';
+
+/** Доступ магазина к ценам компании (функция price_access). */
+export interface PriceAccess {
+  mode: PriceAccessMode;
+  status: PriceAccessStatus | null;
+  sees: boolean;
+}
+
 export interface Offer {
   variant_id: string;
   company_id: string;
@@ -166,7 +179,8 @@ export interface Offer {
   image_url: string;
   barcode: string;
   unit: Unit;
-  price: number;
+  /** null — компания показывает цены только одобренным магазинам, а у этого магазина доступа нет. */
+  price: number | null;
   pack_qty: number;
   /** Свободный остаток в филиале, который обслуживает магазин; null — без ограничения. */
   free: number | null;

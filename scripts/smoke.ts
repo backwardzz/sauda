@@ -587,6 +587,39 @@ async function main() {
     && Number(halfStats.reserved) === 0 && Number(halfStats.orders_count) === 2 && Number(halfStats.stores_count) === 1, halfStats);
   check('чужой не получает статистику компании', (await must(a.rpc('company_stats', { p_org: supOrg }))).length === 0);
 
+  console.log('Кому видны цены компании');
+  const priced = (rows: Row[]) => rows.filter((r) => r.price != null).length;
+  check('по умолчанию цены видят все магазины', priced(await must(b.rpc('store_offers', { p_store: storeB, p_company: supOrg }))) > 0);
+  const { db: rival } = await signUp('rival');
+  const rivalOrg = await must(rival.rpc('create_org', { p_name: 'Конкурент', p_kind: 'company', p_city: almaty }));
+  check('другая компания не видит цены конкурента',
+    (await must(rival.from('company_variants').select('price').eq('org_id', supOrg))).length === 0);
+  check('компания видит свои цены', (await must(s.from('company_variants').select('price').eq('org_id', supOrg))).length > 0);
+  await fails('чужая организация не закрывает прайс компании',
+    a.from('companies').update({ price_access: 'approved' }).eq('org_id', supOrg).select().then((r) => ({ error: r.data?.length ? { message: 'изменено' } : r.error ?? { message: 'нет прав' } })));
+  await must(s.from('companies').update({ price_access: 'approved' }).eq('org_id', supOrg));
+  const accessA = await must(a.rpc('price_access', { p_company: supOrg, p_store_org: orgA }));
+  check('магазин, который уже заказывал, получил доступ сам', accessA.mode === 'approved' && accessA.status === 'approved' && accessA.sees, accessA);
+  const hidden = await must(b.rpc('store_offers', { p_store: storeB, p_company: supOrg }));
+  check('без доступа: каталог виден, цены и остатки нет', hidden.length > 0 && priced(hidden) === 0 && hidden.every((r: Row) => r.free == null), hidden.length);
+  check('без доступа цены не читаются и напрямую', (await must(b.from('company_variants').select('price').eq('org_id', supOrg))).length === 0);
+  await fails('без доступа заказ не принимается',
+    b.rpc('place_order', { p_store: storeB, p_supplier: supOrg, p_items: [{ variant_id: hidden[0].variant_id, qty: 1 }] }), 'запросите доступ');
+  await fails('компания не запрашивает прайс у компании', rival.rpc('request_price_access', { p_company: supOrg, p_store_org: rivalOrg }), 'Нет доступа');
+  await fails('запрос от чужого магазина не проходит', a.rpc('request_price_access', { p_company: supOrg, p_store_org: orgB }), 'Нет доступа');
+  eq('магазин запросил прайс', (await must(b.rpc('request_price_access', { p_company: supOrg, p_store_org: orgB }))) === 'pending' ? 1 : 0, 1);
+  const list = await must(s.rpc('price_access_list', { p_company: supOrg }));
+  check('компания видит запрос с городом магазина первым', list[0]?.store_name === 'Магазин Б' && list[0].status === 'pending' && list[0].city === 'Астана', list[0]);
+  await fails('магазин не одобряет себя сам', b.rpc('decide_price_access', { p_company: supOrg, p_store_org: orgB, p_status: 'approved' }), 'Нет доступа');
+  await fails('чужие запросы не видны', rival.rpc('price_access_list', { p_company: supOrg }), 'Нет доступа');
+  await must(s.rpc('decide_price_access', { p_company: supOrg, p_store_org: orgB, p_status: 'approved' }));
+  check('после одобрения цены видны', priced(await must(b.rpc('store_offers', { p_store: storeB, p_company: supOrg }))) > 0);
+  await must(s.rpc('decide_price_access', { p_company: supOrg, p_store_org: orgB, p_status: 'declined' }));
+  check('закрытый доступ снова прячет цены', priced(await must(b.rpc('store_offers', { p_store: storeB, p_company: supOrg }))) === 0);
+  eq('после отказа можно запросить снова', (await must(b.rpc('request_price_access', { p_company: supOrg, p_store_org: orgB }))) === 'pending' ? 1 : 0, 1);
+  await must(s.from('companies').update({ price_access: 'stores' }).eq('org_id', supOrg));
+  check('открытый прайс снова виден всем магазинам', priced(await must(b.rpc('store_offers', { p_store: storeB, p_company: supOrg }))) > 0);
+
   console.log('Фото товара с компьютера');
   const photoBytes = new Blob([new Uint8Array([0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x45, 0x42, 0x50])], { type: 'image/webp' });
   const photoPath = `${supOrg}/${randomBytes(8).toString('hex')}.webp`;

@@ -78,6 +78,7 @@ const COMPANY_NAV: Section[] = [
   { label: 'Каталог', to: '/catalog' },
   { label: 'Склад', to: '/stock' },
   { label: 'Аналитика', to: '/analytics' },
+  { label: 'Доступ к ценам', to: '/price-access' },
   { label: 'Сотрудники', to: '/users' },
   { label: 'Профиль компании', to: '/profile' },
 ];
