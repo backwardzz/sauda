@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import type { Database } from './database.types';
 
 // вне Vite (тесты под Node) import.meta.env не существует
 const env = (import.meta as { env?: Record<string, string | undefined> }).env ?? {};
@@ -6,7 +7,8 @@ const url = env.VITE_SUPABASE_URL;
 const key = env.VITE_SUPABASE_ANON_KEY;
 
 export const configured = Boolean(url && key);
-export const db = createClient(url || 'http://127.0.0.1:54321', key || 'missing');
+// типы таблиц и функций генерируются из схемы: npm run db:types
+export const db = createClient<Database>(url || 'http://127.0.0.1:54321', key || 'missing');
 /** Адрес и публичный ключ проекта: их же указывает учётная система компании в запросах к API. */
 export const API_URL = `${url || 'http://127.0.0.1:54321'}/rest/v1/rpc`;
 export const PUBLIC_KEY = key || '';
@@ -38,7 +40,8 @@ export function errorText(e: unknown): string {
 }
 
 /** Разворачивает ответ supabase-js: возвращает данные или бросает ошибку с понятным текстом. */
-export async function q<T>(p: PromiseLike<{ data: T | null; error: { message: string } | null }>): Promise<T> {
+// Тип результата задаёт вызывающий: строки часто читаются в типы приложения из types.ts, а не в сырые строки схемы.
+export async function q<T>(p: PromiseLike<{ data: unknown; error: { message: string } | null }>): Promise<T> {
   const { data, error } = await p;
   if (error) throw new Error(errorText(error));
   return data as T;

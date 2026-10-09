@@ -100,7 +100,7 @@ export function Users() {
       render: (m) =>
         isOwner && m.user_id !== user.id ? (
           <select value={m.role} disabled={busy} aria-label={`Должность: ${m.name}`}
-            onChange={(e) => act(() => q(db.from('org_members').update({ role: e.target.value }).eq('org_id', org.id).eq('user_id', m.user_id)), 'Должность изменена')}>
+            onChange={(e) => act(() => q(db.from('org_members').update({ role: e.target.value as Role }).eq('org_id', org.id).eq('user_id', m.user_id)), 'Должность изменена')}>
             {(Object.keys(ROLE_LABEL) as Role[]).map((r) => <option key={r} value={r}>{label(r)}</option>)}
           </select>
         ) : (

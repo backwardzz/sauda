@@ -11,6 +11,7 @@
     "db:start": "supabase start -x realtime,imgproxy,edge-runtime,logflare,vector,supavisor",
     "db:stop": "supabase stop",
     "db:reset": "supabase db reset",
+    "db:types": "tsx scripts/db-types.ts",
     "test": "tsx scripts/test-units.ts && tsx scripts/smoke.ts",
     "test:units": "tsx scripts/test-units.ts",
     "seed": "tsx scripts/seed.ts",

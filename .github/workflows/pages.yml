@@ -30,6 +30,8 @@ jobs:
       - run: npx tsc --noEmit
       - run: npm run test:units
       - run: npm run db:start
+      # типы клиента не отстали от миграций
+      - run: npm run db:types -- --check
       # адрес и ключи локальной базы печатает сам Supabase CLI
       - run: |
           eval "$(npx supabase status -o env)"
