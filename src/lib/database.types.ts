@@ -751,13 +751,13 @@ isOneToOne: false
                   ]
                 },"sales": {
                   Row: {
-                    "cashier_id": string | null,"comment": string,"cost": number,"created_at": string,"customer_id": string | null,"discount": number,"id": string,"kind": string,"number": number,"org_id": string,"paid_card": number,"paid_cash": number,"parent_id": string | null,"register_id": string,"shift_id": string,"store_id": string,"subtotal": number,"total": number
+                    "cashier_id": string | null,"client_id": string | null,"comment": string,"cost": number,"created_at": string,"customer_id": string | null,"discount": number,"id": string,"kind": string,"number": number,"org_id": string,"paid_card": number,"paid_cash": number,"parent_id": string | null,"register_id": string,"shift_id": string,"store_id": string,"subtotal": number,"total": number
                   }
                   Insert: {
-                    "cashier_id"?: string | null,"comment"?: string,"cost"?: number,"created_at"?: string,"customer_id"?: string | null,"discount"?: number,"id"?: string,"kind": string,"number": number,"org_id": string,"paid_card"?: number,"paid_cash"?: number,"parent_id"?: string | null,"register_id": string,"shift_id": string,"store_id": string,"subtotal"?: number,"total"?: number
+                    "cashier_id"?: string | null,"client_id"?: string | null,"comment"?: string,"cost"?: number,"created_at"?: string,"customer_id"?: string | null,"discount"?: number,"id"?: string,"kind": string,"number": number,"org_id": string,"paid_card"?: number,"paid_cash"?: number,"parent_id"?: string | null,"register_id": string,"shift_id": string,"store_id": string,"subtotal"?: number,"total"?: number
                   }
                   Update: {
-                    "cashier_id"?: string | null,"comment"?: string,"cost"?: number,"created_at"?: string,"customer_id"?: string | null,"discount"?: number,"id"?: string,"kind"?: string,"number"?: number,"org_id"?: string,"paid_card"?: number,"paid_cash"?: number,"parent_id"?: string | null,"register_id"?: string,"shift_id"?: string,"store_id"?: string,"subtotal"?: number,"total"?: number
+                    "cashier_id"?: string | null,"client_id"?: string | null,"comment"?: string,"cost"?: number,"created_at"?: string,"customer_id"?: string | null,"discount"?: number,"id"?: string,"kind"?: string,"number"?: number,"org_id"?: string,"paid_card"?: number,"paid_cash"?: number,"parent_id"?: string | null,"register_id"?: string,"shift_id"?: string,"store_id"?: string,"subtotal"?: number,"total"?: number
                   }
                   Relationships: [
                     {
@@ -1122,7 +1122,7 @@ isOneToOne: false
 { Args: { "p_comment"?: string | null,"p_items": unknown,"p_refund_card"?: number | null,"p_sale": string | null,"p_shift": string | null}; Returns: Json
                            },
 "create_sale":
-{ Args: { "p_comment"?: string | null,"p_customer"?: string | null,"p_items": unknown,"p_paid_card"?: number | null,"p_shift": string | null}; Returns: Json
+{ Args: { "p_client_id"?: string | null,"p_comment"?: string | null,"p_customer"?: string | null,"p_items": unknown,"p_paid_card"?: number | null,"p_shift": string | null}; Returns: Json
                            },
 "create_stock_doc":
 { Args: { "p_comment"?: string | null,"p_kind": string | null,"p_store": string | null,"p_supplier"?: string | null,"p_to_store"?: string | null}; Returns: string

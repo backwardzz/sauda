@@ -178,19 +178,29 @@ export function Pos() {
   const change = round2(cashGiven - cashDue);
   const bills = useMemo(() => [...new Set(BILLS.map((b) => Math.ceil(cashDue / b) * b))].filter((b) => b > cashDue).slice(0, 4), [cashDue]);
 
+  /**
+   * id чека для повторов: если ответ на оплату потерялся, повторная отправка того же чека вернёт уже проведённый,
+   * а не пробьёт второй. Пока содержимое чека не менялось, id тот же; изменили чек — это уже другая продажа.
+   */
+  const attempt = useRef<{ content: string; id: string } | null>(null);
+
   const pay = async () => {
     if (!shift) return;
     if (change < 0) return toast.error('Получено меньше, чем нужно оплатить наличными');
+    const sale = {
+      p_shift: shift.id,
+      p_items: lines.map((l) => ({ product_id: l.product.id, qty: parseNum(l.qty), price: linePrice(l), discount: lineDiscount(l) })),
+      p_paid_card: cardSum,
+      p_customer: customer || null,
+    };
+    const content = JSON.stringify(sale);
+    if (attempt.current?.content !== content) attempt.current = { content, id: crypto.randomUUID() };
     setBusy(true);
     try {
       const res = await q<{ id: string; number: number; total: number }>(
-        db.rpc('create_sale', {
-          p_shift: shift.id,
-          p_items: lines.map((l) => ({ product_id: l.product.id, qty: parseNum(l.qty), price: linePrice(l), discount: lineDiscount(l) })),
-          p_paid_card: cardSum,
-          p_customer: customer || null,
-        }),
+        db.rpc('create_sale', { ...sale, p_client_id: attempt.current.id }),
       );
+      attempt.current = null;
       setLines([]);
       setCustomer('');
       setModal(null);
