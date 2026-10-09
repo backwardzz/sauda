@@ -6,3 +6,5 @@ supabase/.temp
 supabase/.branches
 *.log
 samples
+test-results
+playwright-report

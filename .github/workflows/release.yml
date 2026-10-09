@@ -1,0 +1,31 @@
+# Релиз после каждой успешной выкладки main: тег вида v2026.10.09.1 и список влитых пул-реквестов
+# (Releases на GitHub). По тегу видно, какой код сейчас на сайте, и к нему легко откатиться.
+name: Release
+
+on:
+  workflow_run:
+    workflows: [Deploy to GitHub Pages]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      SHA: ${{ github.event.workflow_run.head_sha }}
+    steps:
+      - name: Тег и релиз
+        run: |
+          # тот же коммит уже выпущен (повторный запуск выкладки) — ничего не делаем
+          if gh api "repos/$GITHUB_REPOSITORY/releases" -q ".[].target_commitish" | grep -qx "$SHA"; then
+            echo "Коммит $SHA уже выпущен"; exit 0
+          fi
+          day=$(TZ=Asia/Almaty date +%Y.%m.%d)
+          n=$(gh api "repos/$GITHUB_REPOSITORY/tags?per_page=100" -q ".[].name" | grep -c "^v$day\." || true)
+          tag="v$day.$((n + 1))"
+          gh release create "$tag" -R "$GITHUB_REPOSITORY" --target "$SHA" --title "$tag" --generate-notes
