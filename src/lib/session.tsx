@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { User } from '@supabase/supabase-js';
+import { useChanged } from './hooks';
 import { queryClient } from './queryClient';
 import { db, q } from './supabase';
 import type { Branch, Company, Org, Register, Role, Store } from './types';
@@ -85,14 +86,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, [userId]);
 
   const reload = useCallback(async () => {
-    if (!userId) {
-      setMemberships([]);
-      setStores([]);
-      setRegisters([]);
-      setCompany(null);
-      setBranches([]);
-      return;
-    }
+    // без входа списки очищаются при отрисовке, ниже
+    if (!userId) return;
     await db.rpc('accept_invites');
     const rows = await q<{ role: Role; orgs: Org }[]>(
       db.from('org_members').select('role, orgs(*)').eq('user_id', userId).order('created_at') as never,
@@ -118,10 +113,21 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setBranches(b);
   }, [userId, orgId]);
 
+  if (useChanged([user, reload]) && user !== undefined) {
+    if (!loading) setLoading(true);
+    if (!userId) {
+      setMemberships([]);
+      setStores([]);
+      setRegisters([]);
+      setCompany(null);
+      setBranches([]);
+    }
+  }
   useEffect(() => {
     if (user === undefined) return;
     let alive = true;
-    setLoading(true);
+    // reload меняет состояние только после ответов базы (после await), а не синхронно в эффекте
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     reload()
       .catch((e) => console.error(e))
       .finally(() => alive && setLoading(false));

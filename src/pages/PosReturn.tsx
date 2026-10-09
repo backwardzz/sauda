@@ -22,10 +22,14 @@ export function PosReturn({ orgId, shift, currency, saleId, onClose, onDone }: P
   const [returned, setReturned] = useState<Record<string, number>>({});
   const [qtys, setQtys] = useState<Record<string, string>>({});
   const [toCard, setToCard] = useState(false);
-  const [busy, setBusy] = useState(false);
+  // чек, открытый по ссылке, начинает загружаться сразу
+  const [busy, setBusy] = useState(!!saleId);
 
-  const load = async (by: { id: string } | { number: number }) => {
+  const load = (by: { id: string } | { number: number }) => {
     setBusy(true);
+    return fetchSale(by);
+  };
+  const fetchSale = async (by: { id: string } | { number: number }) => {
     try {
       let query = db.from('sales').select(SALE_SELECT).eq('org_id', orgId).eq('kind', 'sale');
       query = 'id' in by ? query.eq('id', by.id) : query.eq('number', by.number);
@@ -48,7 +52,7 @@ export function PosReturn({ orgId, shift, currency, saleId, onClose, onDone }: P
   };
 
   useEffect(() => {
-    if (saleId) void load({ id: saleId });
+    if (saleId) void fetchSale({ id: saleId });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [saleId]);
 

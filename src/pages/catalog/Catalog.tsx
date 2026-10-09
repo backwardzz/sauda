@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { bestOffer, clampQty, loadOffers, useCarts } from '../../lib/cart';
 import { money, parseNum, plural, qty as fmtQty } from '../../lib/format';
-import { useDebounced, useQuery, useStored } from '../../lib/hooks';
+import { useChanged, useDebounced, useQuery, useStored } from '../../lib/hooks';
 import { useWorkspace } from '../../lib/session';
 import { db, q } from '../../lib/supabase';
 import type { CatalogItem } from '../../lib/starter';
@@ -70,7 +70,7 @@ function CatalogList() {
   const [chosen, setChosen] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
 
-  useEffect(() => setPage(0), [term, category, sub, brand, onlyNew, onlyOffers, pageSize]);
+  if (useChanged([term, category, sub, brand, onlyNew, onlyOffers, pageSize]) && page !== 0) setPage(0);
   // при поиске и отборе «с ценами» ищем по всей категории, минуя карточки производителей
   const showBrands = category !== null && brand === null && !term && !onlyOffers;
 

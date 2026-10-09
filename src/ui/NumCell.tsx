@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
+import { useChanged } from '../lib/hooks';
 import { parseNum } from '../lib/format';
 import { toast } from './toast';
 
@@ -19,7 +20,7 @@ const show = (v: number | null) => (v == null ? '' : String(Number(v)));
 export function NumCell({ value, onSave, onClear, disabled, placeholder, ...rest }: Props) {
   const [text, setText] = useState(show(value));
   const [busy, setBusy] = useState(false);
-  useEffect(() => setText(show(value)), [value]);
+  if (useChanged([value])) setText(show(value));
 
   const commit = async () => {
     const n = Math.max(parseNum(text), 0);

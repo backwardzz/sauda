@@ -1,6 +1,7 @@
 import { Suspense, useEffect, useRef, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useCarts } from '../lib/cart';
+import { useChanged } from '../lib/hooks';
 import { useSession } from '../lib/session';
 import { THEME_LABEL, useTheme } from '../lib/theme';
 import { ROLE_LABEL } from '../lib/types';
@@ -95,7 +96,7 @@ export function Layout() {
   const cart = useCarts(store?.id ?? '');
   const [theme, setTheme] = useTheme();
 
-  useEffect(() => setOpen(null), [location.pathname]);
+  if (useChanged([location.pathname]) && open) setOpen(null);
   useEffect(() => {
     const close = (e: MouseEvent) => {
       if (!bar.current?.contains(e.target as Node)) setOpen(null);

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { bestOffer, clampQty, loadOffers, readCart, writeCart } from '../../lib/cart';
 import { money, parseNum, plural, qty as fmtQty, round2 } from '../../lib/format';
@@ -53,12 +53,12 @@ function StarterPacks() {
   );
 
   // при первом открытии отмечены все пакеты, кроме необязательных (табак, алкоголь); первый пакет раскрыт
-  useEffect(() => {
-    if (picked || !items.data) return;
+  if (!picked && items.data) {
+    const data = items.data;
     const optional = new Set(STARTER_PACKS.filter((p) => p.optional).map((p) => p.key));
-    setPicked(new Set(items.data.filter((i) => !i.mine && !optional.has(i.starter_pack)).map((i) => i.id)));
-    setOpen(STARTER_PACKS.find((p) => items.data!.some((i) => i.starter_pack === p.key))?.key ?? null);
-  }, [items.data, picked]);
+    setPicked(new Set(data.filter((i) => !i.mine && !optional.has(i.starter_pack)).map((i) => i.id)));
+    setOpen(STARTER_PACKS.find((p) => data.some((i) => i.starter_pack === p.key))?.key ?? null);
+  }
 
   const chosenSet = picked ?? new Set<string>();
   const pct = Math.max(parseNum(markup), 0);

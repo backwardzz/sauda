@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { money, qty } from '../lib/format';
-import { useDebounced, useQuery, useStored } from '../lib/hooks';
+import { useChanged, useDebounced, useQuery, useStored } from '../lib/hooks';
 import { categoryTree, useCategories } from '../lib/refs';
 import { useWorkspace } from '../lib/session';
 import { db, q, safeTerm } from '../lib/supabase';
@@ -35,7 +35,7 @@ export function Stock() {
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useStored('sauda:stock:pageSize', 50);
 
-  useEffect(() => setPage(0), [term, mode, category, store.id, pageSize]);
+  if (useChanged([term, mode, category, store.id, pageSize]) && page !== 0) setPage(0);
   const tree = useMemo(() => categoryTree(categories.data ?? []), [categories.data]);
 
   const scoped = () => {

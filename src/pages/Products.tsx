@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { dateOnly, marginPct, markupPct, money, parseNum } from '../lib/format';
-import { useDebounced, useQuery, useStored } from '../lib/hooks';
+import { useChanged, useDebounced, useQuery, useStored } from '../lib/hooks';
 import { categoryTree, useCategories, useContractors, useQuickGroups } from '../lib/refs';
 import { useWorkspace } from '../lib/session';
 import { db, q, safeTerm } from '../lib/supabase';
@@ -53,7 +53,7 @@ export function Products() {
   const [busy, setBusy] = useState(false);
   const menus = useRef<HTMLDivElement>(null);
 
-  useEffect(() => setPage(0), [term, category, filters, pageSize]);
+  if (useChanged([term, category, filters, pageSize]) && page !== 0) setPage(0);
   useEffect(() => {
     const close = (e: MouseEvent) => {
       if (!menus.current?.contains(e.target as Node)) setMenu(null);

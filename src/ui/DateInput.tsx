@@ -35,17 +35,21 @@ export function DateInput({ value, onChange, min, max, range, ...rest }: Props) 
   const [view, setView] = useState({ y: base.getFullYear(), m: base.getMonth() });
   const box = useRef<HTMLDivElement>(null);
 
+  const toggle = () => {
+    if (!open) {
+      const d = value ? fromDateInput(value) : new Date();
+      setView({ y: d.getFullYear(), m: d.getMonth() });
+    }
+    setOpen(!open);
+  };
+
   useEffect(() => {
     if (!open) return;
-    const d = value ? fromDateInput(value) : new Date();
-    setView({ y: d.getFullYear(), m: d.getMonth() });
     const close = (e: MouseEvent) => { if (!box.current?.contains(e.target as Node)) setOpen(false); };
     const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
     window.addEventListener('mousedown', close);
     window.addEventListener('keydown', esc);
     return () => { window.removeEventListener('mousedown', close); window.removeEventListener('keydown', esc); };
-    // value в зависимостях не нужен: месяц выставляется при открытии
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   const shift = (n: number) => setView(({ y, m }) => ({ y: m + n < 0 ? y - 1 : m + n > 11 ? y + 1 : y, m: (m + n + 12) % 12 }));
@@ -55,7 +59,7 @@ export function DateInput({ value, onChange, min, max, range, ...rest }: Props) 
 
   return (
     <div className="date-input" ref={box}>
-      <button type="button" className={`date-field ${open ? 'open' : ''}`} onClick={() => setOpen(!open)} aria-haspopup="dialog" aria-expanded={open} aria-label={rest['aria-label'] ? `${rest['aria-label']}: ${show(value)}` : undefined}>
+      <button type="button" className={`date-field ${open ? 'open' : ''}`} onClick={toggle} aria-haspopup="dialog" aria-expanded={open} aria-label={rest['aria-label'] ? `${rest['aria-label']}: ${show(value)}` : undefined}>
         <span className="num">{show(value) || 'дд.мм.гггг'}</span>
         <Icon name="calendar" size={16} />
       </button>
