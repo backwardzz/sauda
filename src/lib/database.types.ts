@@ -152,13 +152,13 @@ isOneToOne: false
                   ]
                 },"companies": {
                   Row: {
-                    "company_type": string,"created_at": string,"delivery_note": string,"description": string,"min_order": number,"org_id": string,"payment_terms": string,"updated_at": string,"verified": boolean,"website": string
+                    "company_type": string,"created_at": string,"delivery_note": string,"description": string,"min_order": number,"org_id": string,"payment_terms": string,"price_access": string,"updated_at": string,"verified": boolean,"website": string
                   }
                   Insert: {
-                    "company_type"?: string,"created_at"?: string,"delivery_note"?: string,"description"?: string,"min_order"?: number,"org_id": string,"payment_terms"?: string,"updated_at"?: string,"verified"?: boolean,"website"?: string
+                    "company_type"?: string,"created_at"?: string,"delivery_note"?: string,"description"?: string,"min_order"?: number,"org_id": string,"payment_terms"?: string,"price_access"?: string,"updated_at"?: string,"verified"?: boolean,"website"?: string
                   }
                   Update: {
-                    "company_type"?: string,"created_at"?: string,"delivery_note"?: string,"description"?: string,"min_order"?: number,"org_id"?: string,"payment_terms"?: string,"updated_at"?: string,"verified"?: boolean,"website"?: string
+                    "company_type"?: string,"created_at"?: string,"delivery_note"?: string,"description"?: string,"min_order"?: number,"org_id"?: string,"payment_terms"?: string,"price_access"?: string,"updated_at"?: string,"verified"?: boolean,"website"?: string
                   }
                   Relationships: [
                     {
@@ -335,6 +335,31 @@ isOneToOne: false
 isOneToOne: false
       referencedRelation: "company_variants"
       referencedColumns: ["id","org_id"]
+    }
+                  ]
+                },"company_store_access": {
+                  Row: {
+                    "company_org": string,"decided_at": string | null,"decided_by": string | null,"requested_at": string,"requested_by": string | null,"status": string,"store_org": string
+                  }
+                  Insert: {
+                    "company_org": string,"decided_at"?: string | null,"decided_by"?: string | null,"requested_at"?: string,"requested_by"?: string | null,"status"?: string,"store_org": string
+                  }
+                  Update: {
+                    "company_org"?: string,"decided_at"?: string | null,"decided_by"?: string | null,"requested_at"?: string,"requested_by"?: string | null,"status"?: string,"store_org"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "company_store_access_company_org_fkey"
+      columns: ["company_org"]
+isOneToOne: false
+      referencedRelation: "orgs"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "company_store_access_store_org_fkey"
+      columns: ["store_org"]
+isOneToOne: false
+      referencedRelation: "orgs"
+      referencedColumns: ["id"]
     }
                   ]
                 },"company_variant_limits": {
@@ -1195,6 +1220,9 @@ isOneToOne: false
 "create_stock_doc":
 { Args: { "p_comment"?: string | null,"p_kind": string | null,"p_store": string | null,"p_supplier"?: string | null,"p_to_store"?: string | null}; Returns: string
                            },
+"decide_price_access":
+{ Args: { "p_company": string | null,"p_status": string | null,"p_store_org": string | null}; Returns: undefined
+                           },
 "delete_company_branch":
 { Args: { "p_branch": string | null}; Returns: undefined
                            },
@@ -1234,6 +1262,14 @@ isOneToOne: false
 "post_stock_doc_draft":
 { Args: { "p_doc": string | null,"p_zero_missing"?: boolean | null}; Returns: string
                            },
+"price_access":
+{ Args: { "p_company": string | null,"p_store_org": string | null}; Returns: Json
+                           },
+"price_access_list":
+{ Args: { "p_company": string | null}; Returns: {
+              "city": string,"decided_at": string,"orders": number,"phone": string,"requested_at": string,"status": string,"store_name": string,"store_org": string
+            }[]
+                           },
 "receive_order":
 { Args: { "p_order": string | null}; Returns: string
                            },
@@ -1256,6 +1292,9 @@ isOneToOne: false
 { Args: { "p_from": string | null,"p_org": string | null,"p_store"?: string | null,"p_to": string | null}; Returns: {
               "cash_in": number,"cash_out": number,"cashier_name": string,"closed_at": string,"closing_cash": number,"cost": number,"expected_cash": number,"id": string,"number": number,"opened_at": string,"opening_cash": number,"profit": number,"receipts": number,"register_name": string,"returns_card": number,"returns_cash": number,"sales_card": number,"sales_cash": number
             }[]
+                           },
+"request_price_access":
+{ Args: { "p_company": string | null,"p_store_org": string | null}; Returns: string
                            },
 "revoke_api_key":
 { Args: { "p_key": string | null}; Returns: undefined

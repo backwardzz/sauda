@@ -66,6 +66,7 @@ const CompanyHome = page(() => import('./pages/company/CompanyHome'), 'CompanyHo
 const CompanyCatalog = page(() => import('./pages/company/CompanyCatalog'), 'CompanyCatalog');
 const CompanyProduct = page(() => import('./pages/company/CompanyProduct'), 'CompanyProduct');
 const CompanyGeo = page(() => import('./pages/company/CompanyGeo'), 'CompanyGeo');
+const PriceAccess = page(() => import('./pages/company/PriceAccess'), 'PriceAccess');
 const CompanyStock = page(() => import('./pages/company/CompanyStock'), 'CompanyStock');
 const Profile = page(() => import('./pages/profile/Profile'), 'Profile');
 
@@ -105,6 +106,7 @@ export function App() {
             <Route path="/catalog/:id" element={<CompanyProduct />} />
             <Route path="/stock" element={<CompanyStock />} />
             <Route path="/analytics" element={<CompanyGeo />} />
+            <Route path="/price-access" element={<PriceAccess />} />
             <Route path="/profile" element={<Profile />} />
             <Route path="/users" element={<Users />} />
           </Route>

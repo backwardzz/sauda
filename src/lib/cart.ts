@@ -117,13 +117,14 @@ export function suggestQty(stock: number, minStock: number, pack: number): numbe
 export async function loadOffers(storeId: string, by: { company?: string; barcodes?: string[]; variants?: string[] }): Promise<Offer[]> {
   const list = by.barcodes ?? by.variants;
   if (list && !list.length) return [];
+  // страница компании показывает и товары без цен (прайс по запросу), остальным нужны только те, что можно заказать
   if (!list) return q<Offer[]>(db.rpc('store_offers', { p_store: storeId, p_company: by.company }));
   const out: Offer[] = [];
   for (let i = 0; i < list.length; i += 500) {
     const part = list.slice(i, i + 500);
     out.push(...(await q<Offer[]>(db.rpc('store_offers', { p_store: storeId, ...(by.barcodes ? { p_barcodes: part } : { p_variants: part }) }))));
   }
-  return out;
+  return out.filter((o) => o.price != null);
 }
 
 /** Лучшее предложение на товар: сначала те, что есть в наличии, из них — с филиалом в городе магазина, затем по цене. */

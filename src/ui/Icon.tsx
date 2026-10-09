@@ -29,6 +29,7 @@ const PATHS = {
   down: 'M6 9l6 6 6-6',
   undo: 'M4 9h11a5 5 0 010 10H9M4 9l4-4M4 9l4 4',
   clock: 'M12 21a9 9 0 100-18 9 9 0 000 18zM12 7v5l3 2',
+  lock: 'M6 11h12v10H6zM8 11V7a4 4 0 018 0v4',
   alert: 'M12 3l10 18H2L12 3zM12 10v5M12 18v.5',
   tag: 'M3 12V3h9l9 9-9 9-9-9zM7.5 7.5v.01',
   doc: 'M6 3h9l4 4v14H6zM14 3v5h5M9 13h6M9 17h6',

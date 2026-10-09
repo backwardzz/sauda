@@ -5,7 +5,7 @@ import { money, parseNum, plural, qty as fmtQty, round2 } from '../../lib/format
 import { useQuery } from '../../lib/hooks';
 import { useWorkspace } from '../../lib/session';
 import { db, q } from '../../lib/supabase';
-import { COMPANY_TYPE, type CompanyCard, type Offer, type StockRow } from '../../lib/types';
+import { COMPANY_TYPE, type CompanyCard, type Offer, type PriceAccess, type StockRow } from '../../lib/types';
 import { fullName } from '../../lib/variants';
 import { CompanyAvatar, VerifiedBadge } from '../../ui/CompanyAvatar';
 import { Icon } from '../../ui/Icon';
@@ -30,6 +30,23 @@ export function MarketCompany() {
 
   const company = useQuery(async () => (await q<CompanyCard[]>(db.rpc('company_directory'))).find((c) => c.id === id) ?? null, [id]);
   const catalog = useQuery(() => loadOffers(store.id, { company: id }), [id, store.id]);
+  const access = useQuery(
+    () => q<PriceAccess>(db.rpc('price_access', { p_company: id, p_store_org: org.id })),
+    [id, org.id],
+  );
+  const [requesting, setRequesting] = useState(false);
+  const requestPrices = async () => {
+    setRequesting(true);
+    try {
+      await q(db.rpc('request_price_access', { p_company: id, p_store_org: org.id }));
+      toast.ok('Запрос отправлен компании');
+      access.reload();
+    } catch (e) {
+      toast.error(e);
+    } finally {
+      setRequesting(false);
+    }
+  };
   // остатки магазина по тем же штрихкодам: видно, что заканчивается и чего в магазине ещё нет
   const mine = useQuery(async () => {
     const codes = (catalog.data ?? []).map((p) => p.barcode).filter((c) => /^[\w-]+$/.test(c));
@@ -46,7 +63,8 @@ export function MarketCompany() {
   const offers = useMemo(() => catalog.data ?? [], [catalog.data]);
   const stock = mine.data ?? NO_STOCK;
   const categories = useMemo(() => [...new Set(offers.map((p) => p.category).filter(Boolean))], [offers]);
-  const canOrder = (o: Offer) => o.free == null || Number(o.free) > 0;
+  const canOrder = (o: Offer) => o.price != null && (o.free == null || Number(o.free) > 0);
+  const hidden = access.data ? !access.data.sees : false;
   const term = search.trim().toLowerCase();
 
   const groups = useMemo(() => {
@@ -128,6 +146,23 @@ export function MarketCompany() {
         )}
       </div>
 
+      {hidden && (
+        <div className="card pad price-lock">
+          <Icon name="lock" size={18} />
+          <div className="grow">
+            <b>Цены — по запросу</b>
+            <div className="muted">
+              {access.data?.status === 'pending' ? 'Запрос отправлен. Цены и заказ откроются, когда компания его одобрит.'
+                : access.data?.status === 'declined' ? 'Компания отклонила запрос. Можно связаться с ней и запросить снова.'
+                : 'Компания показывает цены, остатки и принимает заказы только от магазинов, которым открыла прайс.'}
+            </div>
+          </div>
+          {access.data?.status !== 'pending' && (
+            <button className="btn primary" disabled={requesting} onClick={requestPrices}>Запросить прайс</button>
+          )}
+        </div>
+      )}
+
       <div className="toolbar">
         <input className="search" type="search" placeholder="Название или штрихкод" value={search} onChange={(e) => setSearch(e.target.value)} />
         {categories.length > 1 && (
@@ -177,11 +212,13 @@ export function MarketCompany() {
                                 : <span className={`badge ${m.low ? 'warn' : ''}`}>у вас {fmtQty(m.qty)} {m.unit}</span>}
                             </div>
                             <div className="offer-stock">
-                              {o.free == null ? <span className="muted">в наличии</span>
+                              {o.price == null ? null
+                                : o.free == null ? <span className="muted">в наличии</span>
                                 : Number(o.free) > 0 ? <span className="muted">в наличии {fmtQty(o.free)}</span>
                                 : <span className="badge danger">нет в наличии</span>}
                             </div>
-                            <b className="num offer-price">{money(o.price)} <span className="stat-unit">{org.currency}</span></b>
+                            {o.price == null ? <span className="muted offer-price">по запросу</span>
+                              : <b className="num offer-price">{money(o.price)} <span className="stat-unit">{org.currency}</span></b>}
                             {canOrder(o) ? (
                               <div className="qty-box">
                                 <button onClick={() => setQty(o.variant_id, clampQty(n - pack, o))} disabled={n <= 0} aria-label={`Меньше: ${title}`}>−</button>
