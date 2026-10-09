@@ -36,6 +36,8 @@ export interface Org {
   contact_name: string;
   /** Логотип: ссылка https или сжатая картинка (data URL); пусто — инициалы. */
   logo_url: string;
+  /** Ставка НДС для фискальных чеков; null — организация не плательщик НДС. */
+  vat_rate: number | null;
   created_at: string;
 }
 
@@ -258,6 +260,28 @@ export interface Register {
   active: boolean;
   receipt_header: string;
   receipt_footer: string;
+}
+
+/** Фискализация кассы через Webkassa. Пароль кассира хранится на сервере и сюда не попадает. */
+export interface RegisterFiscal {
+  register_id: string;
+  enabled: boolean;
+  /** Заводской номер кассы в Webkassa (SWK…). */
+  cashbox: string;
+  login: string;
+}
+
+export type FiscalStatus = 'pending' | 'done' | 'failed';
+
+export interface FiscalReceipt {
+  id: string;
+  kind: 'sale' | 'return' | 'cash_in' | 'cash_out' | 'z_report';
+  sale_id: string | null;
+  status: FiscalStatus;
+  last_error: string | null;
+  fiscal_number: string | null;
+  ticket_url: string | null;
+  offline: boolean;
 }
 
 export interface Category {

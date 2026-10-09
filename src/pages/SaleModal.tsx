@@ -1,10 +1,11 @@
+import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { dateTime, money, qty } from '../lib/format';
 import { useQuery } from '../lib/hooks';
 import { useTeamNames } from '../lib/refs';
 import { useSession } from '../lib/session';
 import { db, q } from '../lib/supabase';
-import type { Sale, SaleItem } from '../lib/types';
+import type { FiscalReceipt, Sale, SaleItem } from '../lib/types';
 import { Icon } from '../ui/Icon';
 import { Modal } from '../ui/Modal';
 
@@ -24,9 +25,11 @@ interface ReceiptProps {
   cashier: string;
   /** Сколько наличных дал покупатель: известно только в момент продажи. */
   received?: number;
+  /** Чек, принятый Webkassa: вместо «Нефискальный документ» — фискальный номер. */
+  fiscal?: FiscalReceipt | null;
 }
 
-export function Receipt({ sale, orgName, currency, cashier, received }: ReceiptProps) {
+export function Receipt({ sale, orgName, currency, cashier, received, fiscal }: ReceiptProps) {
   const isReturn = sale.kind === 'return';
   return (
     <div className="receipt">
@@ -58,7 +61,14 @@ export function Receipt({ sale, orgName, currency, cashier, received }: ReceiptP
       )}
       <hr />
       {!isReturn && sale.registers?.receipt_footer && <div className="center">{sale.registers.receipt_footer}</div>}
-      <div className="center">Нефискальный документ</div>
+      {fiscal?.status === 'done' ? (
+        <div className="center">
+          Фискальный чек № {fiscal.fiscal_number}
+          {fiscal.ticket_url && <div><a href={fiscal.ticket_url} target="_blank" rel="noreferrer">Проверить чек</a></div>}
+        </div>
+      ) : (
+        <div className="center">Нефискальный документ</div>
+      )}
     </div>
   );
 }
@@ -82,6 +92,20 @@ export function SaleModal({ saleId, onClose, allowReturn, received }: Props) {
     ),
     [saleId],
   );
+
+  const fiscal = useQuery(
+    async () => (await q<FiscalReceipt[]>(db.from('fiscal_receipts').select('*').eq('sale_id', saleId)))[0] ?? null,
+    [saleId],
+  );
+  // чек уходит в Webkassa сразу после продажи: пока он в пути, статус перечитывается
+  const pending = fiscal.data?.status === 'pending';
+  const reloadFiscal = fiscal.reload;
+  useEffect(() => {
+    if (!pending) return;
+    const t = setInterval(reloadFiscal, 2000);
+    const stop = setTimeout(() => clearInterval(t), 60_000);
+    return () => { clearInterval(t); clearTimeout(stop); };
+  }, [pending, reloadFiscal]);
 
   const s = sale.data;
   const title = s ? `${s.kind === 'return' ? 'Возврат' : 'Чек'} № ${s.number}` : 'Чек';
@@ -108,7 +132,15 @@ export function SaleModal({ saleId, onClose, allowReturn, received }: Props) {
         <p className="muted">Загрузка…</p>
       ) : (
         <div className="stack">
-          <Receipt sale={s} orgName={org?.name ?? ''} currency={org?.currency ?? ''} cashier={teamName(s.cashier_id)} received={received} />
+          <Receipt sale={s} orgName={org?.name ?? ''} currency={org?.currency ?? ''} cashier={teamName(s.cashier_id)} received={received} fiscal={fiscal.data} />
+          {fiscal.data && fiscal.data.status !== 'done' && (
+            <p className={fiscal.data.status === 'failed' ? 'error-text' : 'muted'}>
+              {fiscal.data.status === 'pending'
+                ? 'Чек отправляется в Webkassa…'
+                : `Чек не принят Webkassa: ${fiscal.data.last_error ?? 'неизвестная ошибка'}. Он уйдёт повторно со следующей продажей или кнопкой в кассе.`}
+            </p>
+          )}
+          {fiscal.data?.offline && <p className="muted">Webkassa работает без связи с ОФД и передаст чек позже.</p>}
           {s.comment && <p><span className="muted">Комментарий:</span> {s.comment}</p>}
           {(returns.data ?? []).length > 0 && (
             <div>

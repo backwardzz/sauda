@@ -18,6 +18,7 @@ import { errorText } from '../src/lib/supabase';
 import type { Category, City, DocLine, Offer, Variant, VariantStats } from '../src/lib/types';
 import { fullName, priceRange, sizeHints, splitName } from '../src/lib/variants';
 import { periodRange } from '../src/ui/Period';
+import { checkRequest, moneyRequest, unwrap, vatIn } from '../supabase/functions/fiscal/webkassa';
 
 let failed = 0;
 function eq(name: string, actual: unknown, expected: unknown) {
@@ -308,6 +309,28 @@ eq('без кода — по тексту', [errorText(new TypeError('Failed to 
 eq('текст из SQL-функции проходит как есть', errorText({ code: 'P0001', message: 'Смена закрыта' }), 'Смена закрыта');
 eq('не объект', [errorText('строка'), errorText(null)], ['строка', 'null']);
 
+
+console.log('Webkassa');
+const wkSale = {
+  id: 'sale-1', kind: 'sale' as const, total: 1150, paid_cash: 650, paid_card: 500,
+  items: [
+    { name: 'Хлеб', barcode: '4870001', unit: 'шт', qty: 2, price: 200, discount: 0, total: 400 },
+    { name: 'Сахар', barcode: '', unit: 'кг', qty: 1.5, price: 600, discount: 150, total: 750 },
+  ],
+};
+const wk = checkRequest('tok', 'SWK001', wkSale, null);
+eq('продажа: тип операции, касса, id чека Sauda', [wk.OperationType, wk.CashboxUniqueNumber, wk.ExternalCheckNumber], [2, 'SWK001', 'sale-1']);
+eq('оплаты наличными и картой', wk.Payments, [{ Sum: 650, PaymentType: 0 }, { Sum: 500, PaymentType: 1 }]);
+eq('позиция: количество, цена, скидка, единица', [wk.Positions[1].Count, wk.Positions[1].Price, wk.Positions[1].Discount, wk.Positions[1].UnitCode], [1.5, 600, 150, 166]);
+eq('без НДС', [wk.Positions[0].TaxType, wk.Positions[0].Tax], [0, 0]);
+eq('товар без штрихкода — без кода позиции', wk.Positions[1].PositionCode, undefined);
+const wkVat = checkRequest('tok', 'SWK001', { ...wkSale, kind: 'return' }, 16);
+eq('возврат с НДС 16%: НДС внутри суммы строки', [wkVat.OperationType, wkVat.Positions[0].TaxType, wkVat.Positions[0].TaxPercent, wkVat.Positions[0].Tax], [3, 100, 16, 55.17]);
+eq('НДС внутри суммы', [vatIn(116, 16), vatIn(112, 12), vatIn(0, 16)], [16, 12, 0]);
+eq('чек на 0 (полная скидка) — оплата наличными 0', checkRequest('t', 'c', { ...wkSale, paid_cash: 0, paid_card: 0 }, null).Payments, [{ Sum: 0, PaymentType: 0 }]);
+eq('внесение и изъятие', [moneyRequest('t', 'c', 'in', 1000, 'op').OperationType, moneyRequest('t', 'c', 'out', 500.555, 'op').Sum], [0, 500.56]);
+eq('ответ Webkassa', [unwrap({ Data: { a: 1 } }), unwrap({ Errors: [{ Code: 11, Text: 'Смена превысила 24 часа' }] }), unwrap({})],
+  [{ data: { a: 1 } }, { error: 'Смена превысила 24 часа', code: 11 }, { error: 'Webkassa вернула пустой ответ' }]);
 
 console.log(failed ? `\nПровалено проверок: ${failed}` : '\nВсе проверки пройдены');
 process.exit(failed ? 1 : 0);
