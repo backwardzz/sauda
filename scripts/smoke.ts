@@ -672,6 +672,45 @@ async function main() {
   await fails('чужой не получает аналитику компании', a.rpc('company_geo', { p_org: supOrg, p_from: geoFrom, p_to: geoTo }), 'Нет доступа');
   await fails('магазину аналитика компании не положена', a.rpc('company_geo', { p_org: orgA, p_from: geoFrom, p_to: geoTo }), 'Нет доступа');
 
+  console.log('Фискализация');
+  await fails('кассир не настраивает Webkassa',
+    c.rpc('set_register_fiscal', { p_register: register, p_cashbox: 'SWK1', p_login: 'x', p_password: 'p', p_enabled: true }), 'Нет доступа');
+  await fails('чужая организация не настраивает Webkassa',
+    b.rpc('set_register_fiscal', { p_register: register, p_cashbox: 'SWK1', p_login: 'x', p_password: 'p', p_enabled: true }), 'Нет доступа');
+  await fails('первое подключение без пароля',
+    a.rpc('set_register_fiscal', { p_register: register, p_cashbox: 'SWK1', p_login: 'cashier@shop.kz', p_password: '', p_enabled: true }), 'пароль');
+  await must(a.rpc('set_register_fiscal', { p_register: register, p_cashbox: 'SWK1', p_login: 'cashier@shop.kz', p_password: 'secret-1', p_enabled: true }));
+  const fiscal = (await must(c.from('register_fiscal').select('cashbox, login, enabled').eq('register_id', register)))[0];
+  check('кассир видит настройки кассы', fiscal?.login === 'cashier@shop.kz' && fiscal.enabled, fiscal);
+  await fails('кассир не видит ссылку на пароль', c.from('register_fiscal').select('password_secret'), 'permission denied');
+  await fails('кассир не читает пароль Webkassa', c.rpc('fiscal_credentials', { p_register: register }), 'permission denied');
+  check('чужая организация не видит настройки', (await must(b.from('register_fiscal').select('register_id'))).length === 0);
+  const shift3 = await must(c.rpc('open_shift', { p_register: register, p_opening_cash: 0 }));
+  const fsale = await must(c.rpc('create_sale', { p_shift: shift3, p_items: [{ product_id: cola.id, qty: 1 }] }));
+  await must(c.rpc('cash_op', { p_shift: shift3, p_kind: 'in', p_amount: 100 }));
+  const queue = await must(c.from('fiscal_receipts').select('kind, status, sale_id').eq('shift_id', shift3).order('created_at'));
+  check('продажа и внесение встали в очередь на отправку',
+    queue.length === 2 && queue[0].sale_id === fsale.id && queue[0].status === 'pending' && queue[1].kind === 'cash_in', queue);
+  await fails('кассир не меняет статус чека сам',
+    c.from('fiscal_receipts').update({ status: 'done' }).eq('shift_id', shift3).select().then((r) => ({ error: r.data?.length ? { message: 'изменено' } : r.error ?? { message: 'нет прав' } })));
+  await fails('смена не закрывается с неотправленными чеками', c.rpc('close_shift', { p_shift: shift3, p_closing_cash: 550 }), 'Не все чеки');
+  if (admin) {
+    const creds = await must(admin.rpc('fiscal_credentials', { p_register: register }));
+    check('сервер читает пароль из Vault', creds?.password === 'secret-1' && creds.cashbox === 'SWK1', creds);
+    await must(a.rpc('set_register_fiscal', { p_register: register, p_cashbox: 'SWK2', p_login: 'cashier@shop.kz', p_password: '', p_enabled: true }));
+    check('пустой пароль оставляет прежний', (await must(admin.rpc('fiscal_credentials', { p_register: register })))?.password === 'secret-1');
+    await must(admin.from('fiscal_receipts').update({ status: 'done' }).eq('shift_id', shift3));
+    await fails('без Z-отчёта смена не закрывается', c.rpc('close_shift', { p_shift: shift3, p_closing_cash: 550 }), 'Z-отчёт');
+    await must(admin.from('fiscal_receipts').insert({ org_id: orgA, register_id: register, shift_id: shift3, kind: 'z_report', status: 'done' }));
+  }
+  await must(a.rpc('delete_register_fiscal', { p_register: register }));
+  check('после отключения настроек нет', (await must(a.from('register_fiscal').select('register_id'))).length === 0);
+  await must(c.rpc('close_shift', { p_shift: shift3, p_closing_cash: 550 }));
+  const shift4 = await must(c.rpc('open_shift', { p_register: register, p_opening_cash: 0 }));
+  await must(c.rpc('create_sale', { p_shift: shift4, p_items: [{ product_id: cola.id, qty: 1 }] }));
+  check('без фискализации чеки в очередь не встают', (await must(c.from('fiscal_receipts').select('id').eq('shift_id', shift4))).length === 0);
+  await must(c.rpc('close_shift', { p_shift: shift4, p_closing_cash: 450 }));
+
   console.log('API для учётной системы');
   // учётная система приходит без входа: только публичный ключ проекта и ключ компании в заголовке
   const api = (apiKey?: string) => createClient(url, key, {

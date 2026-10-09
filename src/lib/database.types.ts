@@ -437,6 +437,49 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"fiscal_receipts": {
+                  Row: {
+                    "attempts": number,"cash_op_id": string | null,"created_at": string,"done_at": string | null,"fiscal_number": string | null,"id": string,"kind": string,"last_error": string | null,"offline": boolean,"org_id": string,"register_id": string,"response": Json | null,"sale_id": string | null,"shift_id": string,"status": string,"ticket_url": string | null
+                  }
+                  Insert: {
+                    "attempts"?: number,"cash_op_id"?: string | null,"created_at"?: string,"done_at"?: string | null,"fiscal_number"?: string | null,"id"?: string,"kind": string,"last_error"?: string | null,"offline"?: boolean,"org_id": string,"register_id": string,"response"?: Json | null,"sale_id"?: string | null,"shift_id": string,"status"?: string,"ticket_url"?: string | null
+                  }
+                  Update: {
+                    "attempts"?: number,"cash_op_id"?: string | null,"created_at"?: string,"done_at"?: string | null,"fiscal_number"?: string | null,"id"?: string,"kind"?: string,"last_error"?: string | null,"offline"?: boolean,"org_id"?: string,"register_id"?: string,"response"?: Json | null,"sale_id"?: string | null,"shift_id"?: string,"status"?: string,"ticket_url"?: string | null
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "fiscal_receipts_cash_op_id_fkey"
+      columns: ["cash_op_id"]
+isOneToOne: true
+      referencedRelation: "cash_ops"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "fiscal_receipts_org_id_fkey"
+      columns: ["org_id"]
+isOneToOne: false
+      referencedRelation: "orgs"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "fiscal_receipts_register_id_fkey"
+      columns: ["register_id"]
+isOneToOne: false
+      referencedRelation: "registers"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "fiscal_receipts_sale_id_fkey"
+      columns: ["sale_id"]
+isOneToOne: true
+      referencedRelation: "sales"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "fiscal_receipts_shift_id_fkey"
+      columns: ["shift_id"]
+isOneToOne: false
+      referencedRelation: "shifts"
+      referencedColumns: ["id"]
+    }
+                  ]
                 },"invites": {
                   Row: {
                     "created_at": string,"email": string,"id": string,"org_id": string,"role": Database["public"]['Enums']["member_role"]
@@ -576,13 +619,13 @@ isOneToOne: false
                   ]
                 },"orgs": {
                   Row: {
-                    "bin": string,"business": string,"contact_name": string,"created_at": string,"currency": string,"email": string,"id": string,"kind": string,"logo_url": string,"name": string,"phone": string,"timezone": string
+                    "bin": string,"business": string,"contact_name": string,"created_at": string,"currency": string,"email": string,"id": string,"kind": string,"logo_url": string,"name": string,"phone": string,"timezone": string,"vat_rate": number | null
                   }
                   Insert: {
-                    "bin"?: string,"business"?: string,"contact_name"?: string,"created_at"?: string,"currency"?: string,"email"?: string,"id"?: string,"kind"?: string,"logo_url"?: string,"name": string,"phone"?: string,"timezone"?: string
+                    "bin"?: string,"business"?: string,"contact_name"?: string,"created_at"?: string,"currency"?: string,"email"?: string,"id"?: string,"kind"?: string,"logo_url"?: string,"name": string,"phone"?: string,"timezone"?: string,"vat_rate"?: number | null
                   }
                   Update: {
-                    "bin"?: string,"business"?: string,"contact_name"?: string,"created_at"?: string,"currency"?: string,"email"?: string,"id"?: string,"kind"?: string,"logo_url"?: string,"name"?: string,"phone"?: string,"timezone"?: string
+                    "bin"?: string,"business"?: string,"contact_name"?: string,"created_at"?: string,"currency"?: string,"email"?: string,"id"?: string,"kind"?: string,"logo_url"?: string,"name"?: string,"phone"?: string,"timezone"?: string,"vat_rate"?: number | null
                   }
                   Relationships: [
                     
@@ -668,6 +711,31 @@ isOneToOne: false
                   }
                   Relationships: [
                     
+                  ]
+                },"register_fiscal": {
+                  Row: {
+                    "cashbox": string,"enabled": boolean,"login": string,"org_id": string,"password_secret": string,"provider": string,"register_id": string,"updated_at": string
+                  }
+                  Insert: {
+                    "cashbox": string,"enabled"?: boolean,"login": string,"org_id": string,"password_secret": string,"provider"?: string,"register_id": string,"updated_at"?: string
+                  }
+                  Update: {
+                    "cashbox"?: string,"enabled"?: boolean,"login"?: string,"org_id"?: string,"password_secret"?: string,"provider"?: string,"register_id"?: string,"updated_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "register_fiscal_org_id_fkey"
+      columns: ["org_id"]
+isOneToOne: false
+      referencedRelation: "orgs"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "register_fiscal_register_id_fkey"
+      columns: ["register_id"]
+isOneToOne: true
+      referencedRelation: "registers"
+      referencedColumns: ["id"]
+    }
                   ]
                 },"registers": {
                   Row: {
@@ -1130,8 +1198,14 @@ isOneToOne: false
 "delete_company_branch":
 { Args: { "p_branch": string | null}; Returns: undefined
                            },
+"delete_register_fiscal":
+{ Args: { "p_register": string | null}; Returns: undefined
+                           },
 "delete_stock_doc":
 { Args: { "p_doc": string | null}; Returns: undefined
+                           },
+"fiscal_credentials":
+{ Args: { "p_register": string | null}; Returns: Json
                            },
 "import_company_products":
 { Args: { "p_branch"?: string | null,"p_org": string | null,"p_rows": unknown}; Returns: Json
@@ -1209,6 +1283,9 @@ isOneToOne: false
                            },
 "set_order_status":
 { Args: { "p_comment"?: string | null,"p_items"?: unknown,"p_order": string | null,"p_status": string | null}; Returns: undefined
+                           },
+"set_register_fiscal":
+{ Args: { "p_cashbox": string | null,"p_enabled": boolean | null,"p_login": string | null,"p_password": string | null,"p_register": string | null}; Returns: undefined
                            },
 "set_stock_doc_item":
 { Args: { "p_doc": string | null,"p_price"?: number | null,"p_product": string | null,"p_qty": number | null,"p_sale_price"?: number | null}; Returns: undefined

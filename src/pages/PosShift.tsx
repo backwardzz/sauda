@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { fiscalZReport } from '../lib/fiscal';
 import { money, parseNum } from '../lib/format';
 import { useQuery } from '../lib/hooks';
 import { db, q } from '../lib/supabase';
@@ -88,11 +89,13 @@ export function CashOpModal({ shift, currency, onClose }: { shift: Shift; curren
 interface CloseProps {
   shift: Shift;
   currency: string;
+  /** Касса отправляет чеки в Webkassa: перед закрытием снимается Z-отчёт. */
+  fiscal?: boolean;
   onClose: () => void;
   onClosed: () => void;
 }
 
-export function CloseShiftModal({ shift, currency, onClose, onClosed }: CloseProps) {
+export function CloseShiftModal({ shift, currency, fiscal, onClose, onClosed }: CloseProps) {
   const [actual, setActual] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -123,6 +126,8 @@ export function CloseShiftModal({ shift, currency, onClose, onClosed }: ClosePro
     if (!d) return;
     setBusy(true);
     try {
+      // Z-отчёт снимается до закрытия: если Webkassa недоступна, смена в Sauda остаётся открытой
+      if (fiscal) await fiscalZReport(shift.id);
       await q(db.rpc('close_shift', { p_shift: shift.id, p_closing_cash: actual.trim() === '' ? d.expected : parseNum(actual) }));
       toast.ok(`Смена № ${shift.number} закрыта`);
       onClosed();
@@ -160,6 +165,7 @@ export function CloseShiftModal({ shift, currency, onClose, onClosed }: ClosePro
             <span>Фактически в кассе, {currency}</span>
             <input value={actual} onChange={(e) => setActual(e.target.value)} inputMode="decimal" placeholder={money(d.expected)} autoFocus />
           </label>
+          {fiscal && <p className="hint">Перед закрытием неотправленные чеки уйдут в Webkassa и будет снят Z-отчёт.</p>}
           {diff != null && diff !== 0 && (
             <p className={diff < 0 ? 'error-text' : 'ok-text'}>
               {diff < 0 ? 'Недостача' : 'Излишек'}: {money(Math.abs(diff))} {currency}

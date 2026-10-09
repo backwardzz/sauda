@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { fiscalFlush } from '../lib/fiscal';
 import { money, parseNum, qty as fmtQty, round2, round3 } from '../lib/format';
 import { useChanged, useQuery, useStored } from '../lib/hooks';
 import { useContractors, useQuickGroups } from '../lib/refs';
@@ -58,6 +59,35 @@ export function Pos() {
     [register?.id],
   );
   const shift = shiftQuery.data ?? null;
+
+  // Webkassa: включена ли на кассе и сколько чеков смены ещё не дошло
+  const fiscalOn = useQuery(
+    async () => !!register && (await q<{ enabled: boolean }[]>(db.from('register_fiscal').select('enabled').eq('register_id', register.id)))[0]?.enabled === true,
+    [register?.id],
+  );
+  const unsent = useQuery(async () => {
+    if (!shift) return 0;
+    const { count, error } = await db.from('fiscal_receipts').select('id', { count: 'exact', head: true })
+      .eq('shift_id', shift.id).neq('status', 'done').neq('kind', 'z_report');
+    if (error) throw error;
+    return count ?? 0;
+  }, [shift?.id]);
+  const [sending, setSending] = useState(false);
+  /** Дослать чеки в Webkassa. После продажи — в фоне: чек уже проведён, статус видно в окне чека. */
+  const sendFiscal = async (loud = false) => {
+    if (!register || !fiscalOn.data) return;
+    setSending(true);
+    try {
+      const r = await fiscalFlush(register.id);
+      if (loud && r.failed) toast.error('Webkassa не приняла часть чеков, попробуйте позже');
+      else if (loud) toast.ok('Чеки отправлены в Webkassa');
+    } catch (e) {
+      if (loud) toast.error(e);
+    } finally {
+      setSending(false);
+      unsent.reload();
+    }
+  };
 
   const customers = useContractors(org.id, 'customer');
   const groups = useQuickGroups(org.id);
@@ -204,6 +234,7 @@ export function Pos() {
       setCustomer('');
       setModal(null);
       setReceipt({ id: res.id, received: cashDue > 0 ? cashGiven : undefined });
+      void sendFiscal();
     } catch (e) {
       toast.error(e);
       // цены могли поменять в кабинете, пока чек был открыт: подтягиваем свежие
@@ -271,6 +302,12 @@ export function Pos() {
         <b>{register.name}</b>
         <span className="muted">Смена № {shift.number} · {store.name}</span>
         <span className="spacer" />
+        {(unsent.data ?? 0) > 0 && (
+          <button className="btn danger" disabled={sending} onClick={() => void sendFiscal(true)}
+            title="Чеки проведены в Sauda, но ещё не приняты Webkassa">
+            {sending ? 'Отправка…' : `Не отправлено в Webkassa: ${unsent.data}`}
+          </button>
+        )}
         <button className="btn" onClick={() => setModal('return')}><Icon name="undo" size={16} />Возврат</button>
         <button className="btn" onClick={() => setModal('cash')}><Icon name="cash" size={16} />Внесение / изъятие</button>
         <button className="btn" onClick={() => setModal('close')}><Icon name="clock" size={16} />Закрыть смену</button>
@@ -406,15 +443,15 @@ export function Pos() {
         <Confirm title="Очистить чек" text="Все товары будут убраны из чека и попадут в отчёт «Отменённые товары»."
           confirmLabel="Очистить" danger onConfirm={clear} onClose={() => setModal(null)} />
       )}
-      {modal === 'cash' && <CashOpModal shift={shift} currency={org.currency} onClose={() => { setModal(null); focusSearch(); }} />}
+      {modal === 'cash' && <CashOpModal shift={shift} currency={org.currency} onClose={() => { setModal(null); void sendFiscal(); focusSearch(); }} />}
       {modal === 'close' && (
-        <CloseShiftModal shift={shift} currency={org.currency} onClose={() => setModal(null)}
+        <CloseShiftModal shift={shift} currency={org.currency} fiscal={fiscalOn.data === true} onClose={() => setModal(null)}
           onClosed={() => { setModal(null); shiftQuery.reload(); }} />
       )}
       {modal === 'return' && (
         <PosReturn orgId={org.id} shift={shift} currency={org.currency} saleId={returnSale}
           onClose={() => { setModal(null); setParams({}); focusSearch(); }}
-          onDone={(id) => { setModal(null); setParams({}); setReceipt({ id }); }} />
+          onDone={(id) => { setModal(null); setParams({}); setReceipt({ id }); void sendFiscal(); }} />
       )}
       {receipt && (
         <SaleModal saleId={receipt.id} received={receipt.received} onClose={() => { setReceipt(null); quick.reload(); focusSearch(); }} />
