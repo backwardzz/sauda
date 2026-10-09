@@ -33,9 +33,9 @@ jobs:
           if [ -n "$CLOUDFLARE_API_TOKEN" ] && [ -n "$CLOUDFLARE_ACCOUNT_ID" ]; then echo "on=true" >> "$GITHUB_OUTPUT"
           else echo "::notice::Предпросмотр выключен: нет секретов CLOUDFLARE_API_TOKEN и CLOUDFLARE_ACCOUNT_ID"; fi
       - if: steps.enabled.outputs.on
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
       - if: steps.enabled.outputs.on
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version-file: .nvmrc
           cache: npm
