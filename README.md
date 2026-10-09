@@ -96,8 +96,13 @@ npm run catalog -- --dry   # только показать, что попадё�
 
 ```bash
 npm test           # юнит-тесты и сквозной тест серверной логики на локальной базе
+npm run e2e        # касса и страницы кабинета в браузере (Playwright, нужен npm run setup)
+npm run lint       # ESLint: зависимости хуков, неиспользуемый код
 npm run build      # проверка типов и сборка в dist/
 ```
+
+Перед коммитом изменённые файлы проверяет ESLint (husky + lint-staged). Первый запуск Playwright:
+`npx playwright install chromium`.
 
 Сквозной тест и сидер работают только с локальной базой и отказываются запускаться на любой другой.
 
@@ -133,3 +138,31 @@ npm run build      # проверка типов и сборка в dist/
 
 В облачном проекте оставьте включённым подтверждение почты: приглашения сотрудников срабатывают только для
 подтверждённого адреса.
+
+## Эксплуатация
+
+Что происходит само (`.github/workflows`):
+
+| Когда | Что | Файл |
+| --- | --- | --- |
+| Пул-реквест | типы, ESLint, юнит-тесты, `npm run setup`, сверка типов базы, сквозной тест, Playwright | `pages.yml` |
+| Пул-реквест | предпросмотр сайта на Cloudflare Pages, ссылка комментарием | `preview.yml` |
+| Пул-реквест, main, раз в неделю | поиск уязвимостей CodeQL | `codeql.yml` |
+| Пуш в main | те же проверки → сборка → выкладка на GitHub Pages | `pages.yml` |
+| После выкладки | релиз с тегом `vГГГГ.ММ.ДД.N` и списком влитых пул-реквестов | `release.yml` |
+| Каждую ночь | резервная копия базы, проверка восстановлением, шифрование | `backup.yml` |
+| Каждые 15 минут | доступность сайта, входа и базы; при сбое — issue «Сайт недоступен» | `uptime.yml` |
+| Раз в неделю | пул-реквесты Dependabot с обновлениями npm и GitHub Actions | `dependabot.yml` |
+
+Что настроить один раз (Settings репозитория на GitHub):
+
+- **Резервные копии** — Environments → `backup`, секреты `SUPABASE_DB_URL` (строка Session pooler из
+  supabase.com → Project → Connect, с паролем) и `BACKUP_PASSPHRASE` (храните отдельно: без него копию не
+  расшифровать). Расшифровка скачанной копии: `gpg --decrypt sauda-ДАТА.tar.gz.gpg | tar xz`; восстановление —
+  по [инструкции Supabase](https://supabase.com/docs/guides/platform/migrating-within-supabase/backup-restore)
+  файлами `roles.sql`, `schema.sql`, `data.sql`.
+- **Ошибки в браузере** — Variables → `VITE_SENTRY_DSN` (sentry.io → проект React → Client Keys).
+- **Предпросмотр** — Secrets → `CLOUDFLARE_API_TOKEN` (право Cloudflare Pages: Edit), `CLOUDFLARE_ACCOUNT_ID`,
+  и проект Pages `sauda-preview` в Cloudflare.
+- **Защита main** — Branches → правило для `main`: только через пул-реквест, обязательная проверка `test`.
+- **Безопасность** — Code security: включить Dependabot alerts, Secret scanning и Push protection.
