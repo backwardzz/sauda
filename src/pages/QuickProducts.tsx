@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { money } from '../lib/format';
 import { useQuery } from '../lib/hooks';
 import { useQuickGroups } from '../lib/refs';
@@ -23,9 +23,7 @@ export function QuickProducts() {
 
   const list = groups.data ?? [];
   const current = list.find((g) => g.id === groupId) ?? list[0] ?? null;
-  useEffect(() => {
-    if (current && current.id !== groupId) setGroupId(current.id);
-  }, [current, groupId]);
+  if (current && current.id !== groupId) setGroupId(current.id);
 
   const items = useQuery(
     async () =>

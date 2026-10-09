@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { readCart, writeCart } from '../../lib/cart';
 import { dateTime, money, parseNum, qty as fmtQty, round2 } from '../../lib/format';
-import { useQuery } from '../../lib/hooks';
+import { useChanged, useQuery } from '../../lib/hooks';
 import { useOrg } from '../../lib/session';
 import { db, q } from '../../lib/supabase';
 import { ORDER_STATUS, type Order, type OrderItem } from '../../lib/types';
@@ -29,11 +29,8 @@ export function OrderView() {
     [id],
   );
   const o = data.data;
-  useEffect(() => {
-    if (o) setReply(o.supplier_comment);
-    // заказ перечитывается новым объектом: поле ответа сбрасывается, только если поменялся сам ответ
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [o?.id, o?.supplier_comment]);
+  // заказ перечитывается новым объектом: поле ответа сбрасывается, только если поменялся сам ответ
+  if (useChanged([o?.id, o?.supplier_comment], true) && o) setReply(o.supplier_comment);
 
   const isSupplier = o?.supplier_org === org.id;
   const open = !!o && (o.status === 'new' || o.status === 'confirmed');

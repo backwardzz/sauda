@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { generateBarcode } from '../lib/barcode';
 import { dateTime, markupPct, parseNum, qty, round2 } from '../lib/format';
-import { useQuery } from '../lib/hooks';
+import { useChanged, useQuery } from '../lib/hooks';
 import { categoryTree, useCategories, useContractors, useQuickGroups } from '../lib/refs';
 import { useWorkspace } from '../lib/session';
 import { db, q } from '../lib/supabase';
@@ -82,10 +82,10 @@ export function ProductCard() {
     [id, tab, store.id],
   );
 
-  useEffect(() => {
+  if (useChanged([product.data, id], true)) {
     if (product.data) setForm(toForm(product.data));
     else if (!id) setForm(EMPTY);
-  }, [product.data, id]);
+  }
 
   const kind = product.data?.kind ?? (isService ? 'service' : 'product');
   const tree = useMemo(() => categoryTree(categories.data ?? []), [categories.data]);

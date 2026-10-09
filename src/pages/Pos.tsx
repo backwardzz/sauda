@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { money, parseNum, qty as fmtQty, round2, round3 } from '../lib/format';
-import { useQuery, useStored } from '../lib/hooks';
+import { useChanged, useQuery, useStored } from '../lib/hooks';
 import { useContractors, useQuickGroups } from '../lib/refs';
 import { useWorkspace } from '../lib/session';
 import { db, q } from '../lib/supabase';
@@ -79,11 +79,8 @@ export function Pos() {
   const [busy, setBusy] = useState(false);
   const returnSale = params.get('return');
 
-  useEffect(() => {
-    if (register) setLines(loadCart(register.id));
-    // касса та же, пока не сменился её id: перечитанный объект кассы не должен сбрасывать чек
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [register?.id]);
+  // касса та же, пока не сменился её id: перечитанный объект кассы не должен сбрасывать чек
+  if (useChanged([register?.id], true) && register) setLines(loadCart(register.id));
   useEffect(() => {
     if (!register) return;
     try {
@@ -93,11 +90,8 @@ export function Pos() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lines, register?.id]);
-  useEffect(() => {
-    if (returnSale && shift) setModal('return');
-    // окно возврата открывается один раз на смену, а не при каждом перечитывании смены
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [returnSale, shift?.id]);
+  // окно возврата открывается один раз на смену, а не при каждом перечитывании смены
+  if (useChanged([returnSale, shift?.id], true) && returnSale && shift) setModal('return');
 
   const groupList = groups.data ?? [];
   const activeGroup = groupList.find((g) => g.id === group) ?? groupList[0] ?? null;

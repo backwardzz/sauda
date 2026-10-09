@@ -9,6 +9,19 @@ export interface QueryState<T> {
   reload: () => void;
 }
 
+/**
+ * Изменились ли значения с прошлой отрисовки. Состояние, которое зависит от них (номер страницы при смене фильтра,
+ * текст поля при новом значении), правится прямо при отрисовке, а не эффектом: эффект дал бы лишнюю отрисовку
+ * со старым состоянием (https://react.dev/learn/you-might-not-need-an-effect#adjusting-some-state-when-a-prop-changes).
+ * onMount: true — первая отрисовка тоже считается изменением.
+ */
+export function useChanged(deps: unknown[], onMount = false): boolean {
+  const [prev, setPrev] = useState<unknown[] | null>(onMount ? null : deps);
+  if (prev && prev.length === deps.length && prev.every((v, i) => Object.is(v, deps[i]))) return false;
+  setPrev(deps);
+  return true;
+}
+
 /** Загрузка данных с отбрасыванием устаревших ответов. */
 export function useQuery<T>(fn: () => Promise<T>, deps: unknown[]): QueryState<T> {
   const [data, setData] = useState<T | undefined>(undefined);
@@ -16,10 +29,10 @@ export function useQuery<T>(fn: () => Promise<T>, deps: unknown[]): QueryState<T
   const [error, setError] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
   const seq = useRef(0);
+  if (useChanged([...deps, tick]) && !loading) setLoading(true);
 
   useEffect(() => {
     const id = ++seq.current;
-    setLoading(true);
     fn()
       .then((d) => {
         if (id !== seq.current) return;

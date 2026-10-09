@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { totals, useCompanyCatalog, variantState } from '../../lib/companyCatalog';
 import { dateTime, money, moneyShort, qty as fmtQty } from '../../lib/format';
@@ -19,7 +19,7 @@ export function CompanyHome() {
   const catalog = useCompanyCatalog(org.id);
 
   const all = orders.data ?? [];
-  const monthAgo = Date.now() - 30 * 86400_000;
+  const [monthAgo] = useState(() => Date.now() - 30 * 86400_000);
   const done = all.filter((o) => ['shipped', 'received'].includes(o.status) && new Date(o.shipped_at ?? o.created_at).getTime() >= monthAgo);
   const revenue = done.reduce((s, o) => s + Number(o.total), 0);
   const todo = all.filter((o) => o.status === 'new' || o.status === 'confirmed');

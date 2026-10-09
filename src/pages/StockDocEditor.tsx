@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Navigate, useNavigate, useParams } from 'react-router-dom';
 import { DOC_KINDS, isDocKind, lineExpected, linePrice, lineSum, loadDocLines } from '../lib/docs';
 import { dateTime, markupPct, money, parseNum, qty as fmtQty, round2, round3 } from '../lib/format';
-import { useQuery } from '../lib/hooks';
+import { useChanged, useQuery } from '../lib/hooks';
 import { useContractors, useTeamNames } from '../lib/refs';
 import { useWorkspace } from '../lib/session';
 import { db, errorText, q } from '../lib/supabase';
@@ -61,11 +61,8 @@ export function StockDocEditor() {
       .catch((e) => setLinesError(errorText(e)));
   };
   useEffect(reloadLines, [id]);
-  useEffect(() => {
-    if (d) setComment(d.comment);
-    // после сохранения документ перечитывается новым объектом: поле обновляется, только если поменялся сам комментарий
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [d?.id, d?.comment]);
+  // после сохранения документ перечитывается новым объектом: поле обновляется, только если поменялся сам комментарий
+  if (useChanged([d?.id, d?.comment], true) && d) setComment(d.comment);
 
   const payments = useQuery(
     async () =>

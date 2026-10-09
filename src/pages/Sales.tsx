@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { dateTime, money } from '../lib/format';
-import { useQuery, useStored } from '../lib/hooks';
+import { useChanged, useQuery, useStored } from '../lib/hooks';
 import { useTeamNames } from '../lib/refs';
 import { useWorkspace } from '../lib/session';
 import { db } from '../lib/supabase';
@@ -24,7 +24,7 @@ export function Sales({ kind }: { kind: 'sale' | 'return' }) {
   const [pageSize, setPageSize] = useStored('sauda:sales:pageSize', 50);
   const [open, setOpen] = useState<string | null>(null);
 
-  useEffect(() => setPage(0), [kind, period, number, store.id, pageSize]);
+  if (useChanged([kind, period, number, store.id, pageSize]) && page !== 0) setPage(0);
 
   const list = useQuery(async () => {
     const { from, to } = periodRange(period);

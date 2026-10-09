@@ -31,7 +31,9 @@ function load(): Promise<Turnstile> {
 export function Captcha({ round, onToken }: { round: number; onToken: (token: string | null) => void }) {
   const box = useRef<HTMLDivElement>(null);
   const report = useRef(onToken);
-  report.current = onToken;
+  useEffect(() => {
+    report.current = onToken;
+  });
 
   useEffect(() => {
     if (!CAPTCHA_KEY) return;
