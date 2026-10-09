@@ -39,13 +39,19 @@
 
 ## Запуск на своём компьютере
 
-Нужны Node.js и запущенный Docker.
+Нужны Node.js 22 (версия в `.nvmrc`) и запущенный Docker.
 
 ```bash
 npm install
+npm run setup      # всё сразу: база, .env.local, демо-данные и вход dev / admin1
+npm run dev        # сайт на http://localhost:5181
+```
+
+То же по шагам:
+
+```bash
 npm run db:start   # локальная база Supabase в Docker, первый запуск скачивает образы
 npm run seed       # демо-магазин с товарами и продажами за две недели
-npm run dev        # сайт на http://localhost:5181
 ```
 
 Скопируйте `.env.example` в `.env.local`; адрес и ключ локальной базы печатает `npx supabase status`.

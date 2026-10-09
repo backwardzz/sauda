@@ -4,7 +4,11 @@
   "version": "0.1.0",
   "type": "module",
   "description": "Учёт товаров, касса и отчёты для розничных магазинов",
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
+    "setup": "tsx scripts/setup.ts",
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
