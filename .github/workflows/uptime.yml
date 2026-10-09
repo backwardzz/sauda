@@ -1,0 +1,57 @@
+# Доступность сайта и базы: раз в 15 минут. При сбое открывается issue «Сайт недоступен» (уведомление приходит
+# на почту участникам репозитория), при восстановлении закрывается с комментарием. Только чтение, без секретов.
+name: Uptime
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+
+permissions:
+  issues: write
+
+concurrency:
+  group: uptime
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    env:
+      SITE_URL: ${{ vars.SITE_URL || 'https://backwardzz.github.io/sauda/' }}
+      SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL || 'https://vwsjgqqtrqrayyyhavju.supabase.co' }}
+      # публичный ключ: тот же, что в собранном сайте
+      SUPABASE_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY || 'sb_publishable_5GFbbpwjzqzXNZzRM3FRaQ_CeHA-9Xa' }}
+      GH_TOKEN: ${{ github.token }}
+      TITLE: Сайт недоступен
+    steps:
+      - name: Проверка
+        id: probe
+        run: |
+          problems=""
+          # по три попытки: разовый сетевой сбой у раннера GitHub — не авария
+          check() {
+            for i in 1 2 3; do
+              code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "${@:2}") && [ "$code" -ge 200 ] && [ "$code" -lt 400 ] && return 0
+              sleep 10
+            done
+            problems="$problems\n- $1: ответ ${code:-нет} ($(date -u +%H:%M) UTC)"
+          }
+          check "Сайт" "$SITE_URL"
+          check "Вход (Supabase Auth)" "$SUPABASE_URL/auth/v1/health" -H "apikey: $SUPABASE_KEY"
+          # справочник городов открыт без входа: запрос доходит до самой базы
+          check "База (Supabase REST)" "$SUPABASE_URL/rest/v1/cities?select=id&limit=1" -H "apikey: $SUPABASE_KEY"
+          printf 'problems<<EOF\n%b\nEOF\n' "$problems" >> "$GITHUB_OUTPUT"
+
+      - name: Открыть или закрыть issue
+        env:
+          PROBLEMS: ${{ steps.probe.outputs.problems }}
+        run: |
+          open=$(gh issue list -R "$GITHUB_REPOSITORY" --state open --search "\"$TITLE\" in:title" --json number -q '.[0].number')
+          if [ -n "$(echo "$PROBLEMS" | tr -d '[:space:]')" ]; then
+            if [ -z "$open" ]; then
+              gh issue create -R "$GITHUB_REPOSITORY" --title "$TITLE" --body "$(printf 'Проверка доступности не прошла:\n%s\n\nIssue закроется сам, когда всё снова заработает.' "$PROBLEMS")"
+            fi
+            exit 1
+          elif [ -n "$open" ]; then
+            gh issue close -R "$GITHUB_REPOSITORY" "$open" --comment "Снова доступно ($(date -u +%H:%M) UTC)."
+          fi
