@@ -20,6 +20,7 @@
     "db:types": "tsx scripts/db-types.ts",
     "test": "tsx scripts/test-units.ts && tsx scripts/smoke.ts",
     "test:units": "tsx scripts/test-units.ts",
+    "e2e": "playwright test",
     "seed": "tsx scripts/seed.ts",
     "dev-user": "tsx scripts/dev-user.ts",
     "import": "tsx scripts/import-catalog.ts",
@@ -37,6 +38,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",
+    "@playwright/test": "^1.64.0",
     "@types/node": "^20.14.0",
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
