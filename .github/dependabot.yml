@@ -1,0 +1,27 @@
+# Еженедельные пул-реквесты с обновлениями. Каждый проходит CI с тестами, поэтому мелкие обновления можно вливать сразу.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      timezone: Asia/Almaty
+    open-pull-requests-limit: 5
+    groups:
+      # патчи и минорные версии одним пул-реквестом; мажорные — по отдельности, их нужно читать
+      minor-and-patch:
+        update-types: [minor, patch]
+    ignore:
+      # @types/node следует за версией Node в .nvmrc, а не за последней
+      - dependency-name: '@types/node'
+        update-types: [version-update:semver-major]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      timezone: Asia/Almaty
+    groups:
+      actions:
+        patterns: ['*']

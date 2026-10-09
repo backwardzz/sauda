@@ -4,7 +4,7 @@ import { STOCK_BADGE, useCompanyCatalog, variantState, type StockState } from '.
 import { money, moneyShort, qty as fmtQty, round2 } from '../../lib/format';
 import { useCompany } from '../../lib/session';
 import { db, q } from '../../lib/supabase';
-import type { Branch, CompanyProduct, Variant } from '../../lib/types';
+import type { Branch, CompanyProduct, Variant, VariantStats } from '../../lib/types';
 import { fullName } from '../../lib/variants';
 import { parseStockImport } from '../../lib/stockImport';
 import { exportXlsx, readXlsx } from '../../lib/xlsx';
@@ -15,6 +15,7 @@ import { toast } from '../../ui/toast';
 
 type Filter = 'all' | StockState;
 
+const NO_STATS = new Map<string, VariantStats>();
 const FILTERS: [Filter, string][] = [['all', 'Все'], ['low', 'Заканчиваются'], ['out', 'Нет в наличии'], ['untracked', 'Без учёта']];
 
 /** Склад компании: остатки всех видов по филиалам, правятся прямо в таблице. */
@@ -29,7 +30,7 @@ export function CompanyStock() {
   const file = useRef<HTMLInputElement>(null);
 
   const data = useCompanyCatalog(org.id);
-  const stats = data.data?.stats ?? new Map();
+  const stats = data.data?.stats ?? NO_STATS;
   const stock = data.data?.stock ?? new Map<string, Record<string, number>>();
 
   const rows = useMemo(() => {

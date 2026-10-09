@@ -1,0 +1,62 @@
+# Предпросмотр пул-реквеста: сборка публикуется на Cloudflare Pages по своему адресу, ссылка — комментарием в PR.
+# Включается секретами репозитория CLOUDFLARE_API_TOKEN (права Cloudflare Pages: Edit) и CLOUDFLARE_ACCOUNT_ID
+# и проектом Pages «sauda-preview» (Workers & Pages → Create → Pages → Direct upload). Без секретов шаг пропускается.
+# Предпросмотр работает с облачной базой и теми же правами доступа (RLS), что и сайт: входите тестовым аккаунтом.
+# Пул-реквест с новой миграцией в предпросмотре может не работать, пока миграция не применена к базе.
+name: Preview
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: preview-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL || 'https://vwsjgqqtrqrayyyhavju.supabase.co' }}
+      VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY || 'sb_publishable_5GFbbpwjzqzXNZzRM3FRaQ_CeHA-9Xa' }}
+      VITE_TURNSTILE_SITE_KEY: ${{ vars.VITE_TURNSTILE_SITE_KEY }}
+      VITE_RELEASE: pr-${{ github.event.pull_request.number }}
+    steps:
+      - name: Настроен ли предпросмотр
+        id: enabled
+        run: |
+          if [ -n "$CLOUDFLARE_API_TOKEN" ] && [ -n "$CLOUDFLARE_ACCOUNT_ID" ]; then echo "on=true" >> "$GITHUB_OUTPUT"
+          else echo "::notice::Предпросмотр выключен: нет секретов CLOUDFLARE_API_TOKEN и CLOUDFLARE_ACCOUNT_ID"; fi
+      - if: steps.enabled.outputs.on
+        uses: actions/checkout@v4
+      - if: steps.enabled.outputs.on
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - if: steps.enabled.outputs.on
+        run: npm ci && npm run build
+      - if: steps.enabled.outputs.on
+        id: deploy
+        run: |
+          out=$(npx --yes wrangler@3 pages deploy dist --project-name sauda-preview \
+            --branch "pr-${{ github.event.pull_request.number }}" --commit-dirty=true 2>&1 | tee /dev/stderr)
+          url=$(echo "$out" | grep -oE 'https://[a-z0-9.-]+\.pages\.dev' | tail -1)
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+      - if: steps.enabled.outputs.on && steps.deploy.outputs.url
+        env:
+          GH_TOKEN: ${{ github.token }}
+          URL: ${{ steps.deploy.outputs.url }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        # один комментарий на пул-реквест, обновляется при каждом пуше
+        run: |
+          body="Предпросмотр: $URL (коммит ${HEAD_SHA::7})"
+          id=$(gh api "repos/$GITHUB_REPOSITORY/issues/${{ github.event.pull_request.number }}/comments" \
+            -q '.[] | select(.body | startswith("Предпросмотр:")) | .id' | head -1)
+          if [ -n "$id" ]; then gh api -X PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$id" -f body="$body" >/dev/null
+          else gh pr comment "${{ github.event.pull_request.number }}" -R "$GITHUB_REPOSITORY" --body "$body"; fi

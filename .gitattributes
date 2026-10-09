@@ -1,0 +1,4 @@
+# хуки запускает sh: переводы строк только LF, и на Windows тоже
+.husky/* text eol=lf
+# скрипты для bash: переводы строк только LF
+*.sh text eol=lf

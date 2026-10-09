@@ -24,20 +24,26 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version-file: .nvmrc
           cache: npm
       - run: npm ci
       - run: npx tsc --noEmit
+      - run: npm run lint
       - run: npm run test:units
-      - run: npm run db:start
+      # тот же путь, что у разработчика: база в Docker, .env.local, демо-данные
+      - run: npm run setup
       # типы клиента не отстали от миграций
       - run: npm run db:types -- --check
-      # адрес и ключи локальной базы печатает сам Supabase CLI
-      - run: |
-          eval "$(npx supabase status -o env)"
-          printf 'VITE_SUPABASE_URL=%s\nVITE_SUPABASE_ANON_KEY=%s\nSUPABASE_SERVICE_ROLE_KEY=%s\n' \
-            "$API_URL" "$ANON_KEY" "$SERVICE_ROLE_KEY" > .env.local
       - run: npx tsx scripts/smoke.ts
+      # касса и страницы кабинета в настоящем браузере
+      - run: npx playwright install --with-deps chromium
+      - run: npm run e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: playwright-report
+          retention-days: 7
 
   build:
     needs: test
@@ -51,11 +57,14 @@ jobs:
       VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY || 'sb_publishable_5GFbbpwjzqzXNZzRM3FRaQ_CeHA-9Xa' }}
       # Ключ сайта Cloudflare Turnstile (тоже публичный). Пока переменная не задана, сайт собирается без капчи.
       VITE_TURNSTILE_SITE_KEY: ${{ vars.VITE_TURNSTILE_SITE_KEY }}
+      # Отчёты об ошибках (sentry.io → проект React → Client Keys). Пусто — Sentry не подключается.
+      VITE_SENTRY_DSN: ${{ vars.VITE_SENTRY_DSN }}
+      VITE_RELEASE: ${{ github.sha }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version-file: .nvmrc
           cache: npm
       - run: npm ci
       - run: npm run build

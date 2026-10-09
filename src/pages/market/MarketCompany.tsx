@@ -13,6 +13,7 @@ import { ProductImage } from '../../ui/ProductImage';
 import { toast } from '../../ui/toast';
 
 type Mine = Pick<StockRow, 'barcode' | 'qty' | 'min_stock' | 'low' | 'unit'>;
+const NO_STOCK = new Map<string, Mine>();
 
 /** Каталог одной компании глазами магазина: товары с видами, свои остатки рядом и корзина заказа. */
 export function MarketCompany() {
@@ -43,7 +44,7 @@ export function MarketCompany() {
   }, [catalog.data, store.id]);
 
   const offers = useMemo(() => catalog.data ?? [], [catalog.data]);
-  const stock = mine.data ?? new Map<string, Mine>();
+  const stock = mine.data ?? NO_STOCK;
   const categories = useMemo(() => [...new Set(offers.map((p) => p.category).filter(Boolean))], [offers]);
   const canOrder = (o: Offer) => o.free == null || Number(o.free) > 0;
   const term = search.trim().toLowerCase();

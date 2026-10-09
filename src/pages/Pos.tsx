@@ -81,6 +81,8 @@ export function Pos() {
 
   useEffect(() => {
     if (register) setLines(loadCart(register.id));
+    // касса та же, пока не сменился её id: перечитанный объект кассы не должен сбрасывать чек
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [register?.id]);
   useEffect(() => {
     if (!register) return;
@@ -89,9 +91,12 @@ export function Pos() {
     } catch {
       // без хранилища чек не переживёт перезагрузку страницы
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lines, register?.id]);
   useEffect(() => {
     if (returnSale && shift) setModal('return');
+    // окно возврата открывается один раз на смену, а не при каждом перечитывании смены
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [returnSale, shift?.id]);
 
   const groupList = groups.data ?? [];
