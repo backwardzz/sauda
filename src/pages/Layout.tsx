@@ -7,6 +7,7 @@ import { THEME_LABEL, useTheme } from '../lib/theme';
 import { ROLE_LABEL } from '../lib/types';
 import { CompanyAvatar } from '../ui/CompanyAvatar';
 import { Icon } from '../ui/Icon';
+import { DemoBanner } from './Demo';
 
 interface Section {
   label: string;
@@ -228,6 +229,7 @@ export function Layout() {
           )}
         </div>
       </header>
+      {org?.is_demo && <DemoBanner />}
       <main className="page">
         {/* страницы грузятся по требованию: меню остаётся на месте, пока подгружается код страницы */}
         <Suspense fallback={<div className="muted">Загрузка…</div>}>

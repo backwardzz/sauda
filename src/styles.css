@@ -714,3 +714,7 @@ a.stat:hover { text-decoration: none; }
 .legal h1 { margin: 16px 0 4px; }
 .legal h2 { font-size: 17px; margin: 22px 0 6px; }
 .legal .warn-box { margin: 14px 0; }
+
+/* демо-магазин без регистрации */
+.demo-banner { display: flex; align-items: center; gap: 12px; padding: 8px 16px; background: var(--warn-weak); color: var(--text); border-bottom: 1px solid var(--warn); font-size: 13.5px; }
+.demo-banner span { flex: 1; }

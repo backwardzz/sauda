@@ -103,7 +103,8 @@ begin
 
   -- продажи за две недели: каждый день смена и 6–14 чеков из 1–3 позиций
   for i in reverse 13..1 loop
-    v_day := current_date - i;
+    -- дни считаются по Алматы: иначе вечером «вчера» по UTC ещё сегодня, и последний день остаётся пустым
+    v_day := (now() at time zone 'Asia/Almaty')::date - i;
     v_shift := public.open_shift(v_register, 10000);
     for r in select g from generate_series(1, 6 + floor(random() * 9)::int) g loop
       select jsonb_agg(jsonb_build_object('product_id', p.id, 'qty', case when p.unit = 'кг' then round((0.5 + random())::numeric, 1) else 1 + floor(random() * 2) end))
@@ -113,10 +114,12 @@ begin
       if random() < 0.4 then
         update sales set paid_card = total, paid_cash = 0 where id = (v_sale ->> 'id')::uuid;
       end if;
-      update sales set created_at = v_day + time '09:00' + (r.g * interval '47 minutes') where id = (v_sale ->> 'id')::uuid;
+      update sales set created_at = (v_day + time '09:00' + (r.g * interval '47 minutes')) at time zone 'Asia/Almaty'
+      where id = (v_sale ->> 'id')::uuid;
     end loop;
     perform public.close_shift(v_shift, null);
-    update shifts set opened_at = v_day + time '08:30', closed_at = v_day + time '21:00' where id = v_shift;
+    update shifts set opened_at = (v_day + time '08:30') at time zone 'Asia/Almaty', closed_at = (v_day + time '21:00') at time zone 'Asia/Almaty'
+    where id = v_shift;
   end loop;
   -- сегодня касса открыта: можно сразу пробить чек
   perform public.open_shift(v_register, 10000);

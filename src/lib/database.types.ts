@@ -644,13 +644,13 @@ isOneToOne: false
                   ]
                 },"orgs": {
                   Row: {
-                    "bin": string,"business": string,"contact_name": string,"created_at": string,"currency": string,"email": string,"id": string,"kind": string,"logo_url": string,"name": string,"phone": string,"timezone": string,"vat_rate": number | null
+                    "bin": string,"business": string,"contact_name": string,"created_at": string,"currency": string,"email": string,"id": string,"is_demo": boolean,"kind": string,"logo_url": string,"name": string,"phone": string,"timezone": string,"vat_rate": number | null
                   }
                   Insert: {
-                    "bin"?: string,"business"?: string,"contact_name"?: string,"created_at"?: string,"currency"?: string,"email"?: string,"id"?: string,"kind"?: string,"logo_url"?: string,"name": string,"phone"?: string,"timezone"?: string,"vat_rate"?: number | null
+                    "bin"?: string,"business"?: string,"contact_name"?: string,"created_at"?: string,"currency"?: string,"email"?: string,"id"?: string,"is_demo"?: boolean,"kind"?: string,"logo_url"?: string,"name": string,"phone"?: string,"timezone"?: string,"vat_rate"?: number | null
                   }
                   Update: {
-                    "bin"?: string,"business"?: string,"contact_name"?: string,"created_at"?: string,"currency"?: string,"email"?: string,"id"?: string,"kind"?: string,"logo_url"?: string,"name"?: string,"phone"?: string,"timezone"?: string,"vat_rate"?: number | null
+                    "bin"?: string,"business"?: string,"contact_name"?: string,"created_at"?: string,"currency"?: string,"email"?: string,"id"?: string,"is_demo"?: boolean,"kind"?: string,"logo_url"?: string,"name"?: string,"phone"?: string,"timezone"?: string,"vat_rate"?: number | null
                   }
                   Relationships: [
                     
@@ -1328,6 +1328,9 @@ isOneToOne: false
                            },
 "set_stock_doc_item":
 { Args: { "p_doc": string | null,"p_price"?: number | null,"p_product": string | null,"p_qty": number | null,"p_sale_price"?: number | null}; Returns: undefined
+                           },
+"start_demo":
+{ Args: Record<PropertyKey, never>; Returns: string
                            },
 "starter_products":
 { Args: { "p_org": string | null}; Returns: {

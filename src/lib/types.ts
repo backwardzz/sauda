@@ -36,6 +36,8 @@ export interface Org {
   contact_name: string;
   /** Логотип: ссылка https или сжатая картинка (data URL); пусто — инициалы. */
   logo_url: string;
+  /** Демо-магазин посетителя без регистрации: удаляется через 3 дня, наружу из него ничего не уходит. */
+  is_demo: boolean;
   /** Ставка НДС для фискальных чеков; null — организация не плательщик НДС. */
   vat_rate: number | null;
   created_at: string;

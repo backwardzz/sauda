@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { formatPhone } from '../lib/format';
 import { useSession } from '../lib/session';
@@ -48,9 +48,23 @@ type Kind = 'store' | 'company' | 'employee';
 
 const SOURCES = ['Знакомые или коллеги', 'Instagram', 'TikTok', 'WhatsApp или Telegram', 'Поиск в интернете', 'Представитель компании-поставщика', 'Другое'];
 
+/** Какую вкладку открыть: из демо кнопка «Зарегистрироваться» ведёт сразу на регистрацию. */
+export const AUTH_MODE_KEY = 'sauda:auth-mode';
+const startMode = (): Mode => {
+  try {
+    return sessionStorage.getItem(AUTH_MODE_KEY) === 'register' ? 'register' : 'login';
+  } catch {
+    return 'login';
+  }
+};
+
 export function AuthPage() {
   const { setRecovering } = useSession();
-  const [mode, setMode] = useState<Mode>('login');
+  const [mode, setMode] = useState<Mode>(startMode);
+  // флаг одноразовый: при следующем открытии — снова вход
+  useEffect(() => {
+    try { sessionStorage.removeItem(AUTH_MODE_KEY); } catch { /* без хранилища */ }
+  }, []);
   const [kind, setKind] = useState<Kind>('store');
   const [business, setBusiness] = useState<'grocery' | 'pharmacy'>('grocery');
   const [fullName, setFullName] = useState('');
@@ -110,6 +124,17 @@ export function AuthPage() {
       if (sentTo.type === 'recovery') setRecovering(false);
       setError(errorText(error));
     }
+  };
+
+  // демо: анонимный вход, магазин с товарами и продажами создаёт база (start_demo), его открывает App
+  const demo = async () => {
+    setError(null);
+    if (needCaptcha) return setError('Подтвердите, что вы не робот');
+    setBusy(true);
+    const { error } = await db.auth.signInAnonymously({ options: { captchaToken } });
+    setBusy(false);
+    nextCaptcha();
+    if (error) setError(errorText(error));
   };
 
   const google = async () => {
@@ -388,9 +413,16 @@ export function AuthPage() {
         <button className="btn primary large" disabled={busy}>
           {mode === 'login' ? 'Войти' : 'Создать аккаунт'}
         </button>
-        {GOOGLE && (
+        {mode === 'login' && (
           <>
             <div className="auth-or"><span>или</span></div>
+            <button type="button" className="btn large" disabled={busy} onClick={demo}>Попробовать без регистрации</button>
+            <p className="hint" style={{ textAlign: 'center' }}>Откроется демо-магазин с товарами и продажами: можно пробить чек и посмотреть отчёты</p>
+          </>
+        )}
+        {GOOGLE && (
+          <>
+            {mode !== 'login' && <div className="auth-or"><span>или</span></div>}
             <button type="button" className="btn large" onClick={google}>
               <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true">
                 <path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.1 7.9 3l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z" />
