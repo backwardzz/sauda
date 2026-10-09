@@ -87,7 +87,7 @@ export function CompanyProduct() {
     if (ok) toast.ok(ok);
     data.reload();
   };
-  const patch = (v: Variant, fields: Partial<Variant>, ok?: string) =>
+  const patch = (v: Variant, fields: Partial<Pick<Variant, 'price' | 'active'>>, ok?: string) =>
     act(() => q(db.from('company_variants').update(fields).eq('id', v.id)), ok);
   const setStock = (v: Variant, branchId: string, n: number) =>
     act(() => q(db.rpc('set_company_stock', { p_variant: v.id, p_branch: branchId, p_qty: n })));

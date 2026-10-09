@@ -1,3 +1,4 @@
+import { useQuery as useTanstackQuery, useQueryClient, type QueryKey } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { errorText } from './supabase';
 
@@ -36,6 +37,21 @@ export function useQuery<T>(fn: () => Promise<T>, deps: unknown[]): QueryState<T
 
   const reload = useCallback(() => setTick((t) => t + 1), []);
   return { data, loading, error, reload };
+}
+
+/**
+ * Загрузка через общий кэш: одинаковый ключ — одни данные на всех страницах, повторный заход берёт их из кэша.
+ * Ключ должен включать всё, от чего зависит запрос (организацию, фильтры). reload() сбрасывает ключ везде, где он показан.
+ */
+export function useCached<T>(key: QueryKey, fn: () => Promise<T>): QueryState<T> {
+  const client = useQueryClient();
+  const res = useTanstackQuery({ queryKey: key, queryFn: fn });
+  const keyText = JSON.stringify(key);
+  const reload = useCallback(
+    () => void client.invalidateQueries({ queryKey: JSON.parse(keyText) as QueryKey }),
+    [client, keyText],
+  );
+  return { data: res.data, loading: res.isPending, error: res.error ? errorText(res.error) : null, reload };
 }
 
 export function useDebounced<T>(value: T, ms = 300): T {

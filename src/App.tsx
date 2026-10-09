@@ -1,43 +1,75 @@
+import { lazy, Suspense, type ComponentType } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { configured } from './lib/supabase';
 import { useSession } from './lib/session';
 import { AuthPage } from './pages/Auth';
 import { Onboarding } from './pages/Onboarding';
 import { Layout } from './pages/Layout';
-import { Dashboard } from './pages/Dashboard';
-import { Products } from './pages/Products';
-import { ProductCard } from './pages/ProductCard';
-import { Stock } from './pages/Stock';
-import { QuickProducts } from './pages/QuickProducts';
-import { StockDocs } from './pages/StockDocs';
-import { StockDocEditor } from './pages/StockDocEditor';
-import { InvoiceImport } from './pages/InvoiceImport';
-import { Sales } from './pages/Sales';
-import { Canceled } from './pages/Canceled';
-import { SalesStats } from './pages/reports/SalesStats';
-import { ShiftsReport } from './pages/reports/Shifts';
-import { CashiersReport } from './pages/reports/Cashiers';
-import { DiscountsReport } from './pages/reports/Discounts';
-import { PnlReport } from './pages/reports/Pnl';
-import { AbcReport } from './pages/reports/Abc';
-import { Contractors } from './pages/manage/Contractors';
-import { Users } from './pages/manage/Users';
-import { Registers } from './pages/manage/Registers';
-import { Stores } from './pages/manage/Stores';
-import { Pos } from './pages/Pos';
-import { Market } from './pages/market/Market';
-import { MarketCompany } from './pages/market/MarketCompany';
-import { CartPage } from './pages/market/Cart';
-import { Orders } from './pages/market/Orders';
-import { OrderView } from './pages/market/OrderView';
-import { Catalog } from './pages/catalog/Catalog';
-import { NewStore } from './pages/catalog/NewStore';
-import { CompanyHome } from './pages/company/CompanyHome';
-import { CompanyCatalog } from './pages/company/CompanyCatalog';
-import { CompanyProduct } from './pages/company/CompanyProduct';
-import { CompanyGeo } from './pages/company/CompanyGeo';
-import { CompanyStock } from './pages/company/CompanyStock';
-import { Profile } from './pages/profile/Profile';
+
+const RELOADED = 'sauda:chunk-reload';
+
+/**
+ * Ленивая страница из именованного экспорта модуля. После новой выкладки старых файлов страниц на сервере нет:
+ * открытая вкладка один раз перезагружается и получает новую сборку.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function page<K extends string>(load: () => Promise<Record<K, ComponentType<any>>>, name: K) {
+  return lazy(() =>
+    load().then(
+      (m) => {
+        try { sessionStorage.removeItem(RELOADED); } catch { /* без хранилища */ }
+        return { default: m[name] };
+      },
+      (e) => {
+        let first = true;
+        try {
+          first = !sessionStorage.getItem(RELOADED);
+          sessionStorage.setItem(RELOADED, '1');
+        } catch { first = false; }
+        if (first) location.reload();
+        throw e;
+      },
+    ),
+  );
+}
+
+// Страницы грузятся по требованию: кассир не качает кабинет владельца, компания — кассу магазина.
+const Dashboard = page(() => import('./pages/Dashboard'), 'Dashboard');
+const Products = page(() => import('./pages/Products'), 'Products');
+const ProductCard = page(() => import('./pages/ProductCard'), 'ProductCard');
+const Stock = page(() => import('./pages/Stock'), 'Stock');
+const QuickProducts = page(() => import('./pages/QuickProducts'), 'QuickProducts');
+const StockDocs = page(() => import('./pages/StockDocs'), 'StockDocs');
+const StockDocEditor = page(() => import('./pages/StockDocEditor'), 'StockDocEditor');
+const InvoiceImport = page(() => import('./pages/InvoiceImport'), 'InvoiceImport');
+const Sales = page(() => import('./pages/Sales'), 'Sales');
+const Canceled = page(() => import('./pages/Canceled'), 'Canceled');
+const SalesStats = page(() => import('./pages/reports/SalesStats'), 'SalesStats');
+const ShiftsReport = page(() => import('./pages/reports/Shifts'), 'ShiftsReport');
+const CashiersReport = page(() => import('./pages/reports/Cashiers'), 'CashiersReport');
+const DiscountsReport = page(() => import('./pages/reports/Discounts'), 'DiscountsReport');
+const PnlReport = page(() => import('./pages/reports/Pnl'), 'PnlReport');
+const AbcReport = page(() => import('./pages/reports/Abc'), 'AbcReport');
+const Contractors = page(() => import('./pages/manage/Contractors'), 'Contractors');
+const Users = page(() => import('./pages/manage/Users'), 'Users');
+const Registers = page(() => import('./pages/manage/Registers'), 'Registers');
+const Stores = page(() => import('./pages/manage/Stores'), 'Stores');
+const Pos = page(() => import('./pages/Pos'), 'Pos');
+const Market = page(() => import('./pages/market/Market'), 'Market');
+const MarketCompany = page(() => import('./pages/market/MarketCompany'), 'MarketCompany');
+const CartPage = page(() => import('./pages/market/Cart'), 'CartPage');
+const Orders = page(() => import('./pages/market/Orders'), 'Orders');
+const OrderView = page(() => import('./pages/market/OrderView'), 'OrderView');
+const Catalog = page(() => import('./pages/catalog/Catalog'), 'Catalog');
+const NewStore = page(() => import('./pages/catalog/NewStore'), 'NewStore');
+const CompanyHome = page(() => import('./pages/company/CompanyHome'), 'CompanyHome');
+const CompanyCatalog = page(() => import('./pages/company/CompanyCatalog'), 'CompanyCatalog');
+const CompanyProduct = page(() => import('./pages/company/CompanyProduct'), 'CompanyProduct');
+const CompanyGeo = page(() => import('./pages/company/CompanyGeo'), 'CompanyGeo');
+const CompanyStock = page(() => import('./pages/company/CompanyStock'), 'CompanyStock');
+const Profile = page(() => import('./pages/profile/Profile'), 'Profile');
+
+const pageLoading = <div className="auth muted">Загрузка…</div>;
 
 export function App() {
   const { user, loading, org, company, store, canManage } = useSession();
@@ -63,20 +95,22 @@ export function App() {
     // при переключении аккаунта витрина компании подгружается следом за списком организаций
     if (company?.org_id !== org.id) return <div className="auth muted">Загрузка…</div>;
     return (
-      <Routes>
-        <Route element={<Layout />}>
-          <Route path="/" element={<CompanyHome />} />
-          <Route path="/orders" element={<Orders />} />
-          <Route path="/orders/:id" element={<OrderView />} />
-          <Route path="/catalog" element={<CompanyCatalog />} />
-          <Route path="/catalog/:id" element={<CompanyProduct />} />
-          <Route path="/stock" element={<CompanyStock />} />
-          <Route path="/analytics" element={<CompanyGeo />} />
-          <Route path="/profile" element={<Profile />} />
-          <Route path="/users" element={<Users />} />
-        </Route>
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
+      <Suspense fallback={pageLoading}>
+        <Routes>
+          <Route element={<Layout />}>
+            <Route path="/" element={<CompanyHome />} />
+            <Route path="/orders" element={<Orders />} />
+            <Route path="/orders/:id" element={<OrderView />} />
+            <Route path="/catalog" element={<CompanyCatalog />} />
+            <Route path="/catalog/:id" element={<CompanyProduct />} />
+            <Route path="/stock" element={<CompanyStock />} />
+            <Route path="/analytics" element={<CompanyGeo />} />
+            <Route path="/profile" element={<Profile />} />
+            <Route path="/users" element={<Users />} />
+          </Route>
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </Suspense>
     );
   }
 
@@ -86,54 +120,58 @@ export function App() {
   // Кассиру доступна касса и чеки; справочники, склад и отчёты — владельцу и менеджеру.
   if (!canManage) {
     return (
-      <Routes>
-        <Route path="/pos" element={<Pos />} />
-        <Route element={<Layout />}>
-          <Route path="/sales" element={<Sales kind="sale" />} />
-          <Route path="/returns" element={<Sales kind="return" />} />
-        </Route>
-        <Route path="*" element={<Navigate to="/pos" replace />} />
-      </Routes>
+      <Suspense fallback={pageLoading}>
+        <Routes>
+          <Route path="/pos" element={<Pos />} />
+          <Route element={<Layout />}>
+            <Route path="/sales" element={<Sales kind="sale" />} />
+            <Route path="/returns" element={<Sales kind="return" />} />
+          </Route>
+          <Route path="*" element={<Navigate to="/pos" replace />} />
+        </Routes>
+      </Suspense>
     );
   }
 
   return (
-    <Routes>
-      <Route path="/pos" element={<Pos />} />
-      <Route element={<Layout />}>
-        <Route path="/" element={<Dashboard />} />
-        <Route path="/products" element={<Products />} />
-        <Route path="/products/new" element={<ProductCard />} />
-        <Route path="/products/:id" element={<ProductCard />} />
-        <Route path="/catalog" element={<Catalog />} />
-        <Route path="/catalog/starter" element={<NewStore />} />
-        <Route path="/quick" element={<QuickProducts />} />
-        <Route path="/stock" element={<Stock />} />
-        <Route path="/invoice" element={<InvoiceImport />} />
-        <Route path="/market" element={<Market />} />
-        <Route path="/market/:id" element={<MarketCompany />} />
-        <Route path="/cart" element={<CartPage />} />
-        <Route path="/orders" element={<Orders />} />
-        <Route path="/orders/:id" element={<OrderView />} />
-        <Route path="/docs/:kind" element={<StockDocs />} />
-        <Route path="/docs/:kind/:id" element={<StockDocEditor />} />
-        <Route path="/sales" element={<Sales kind="sale" />} />
-        <Route path="/returns" element={<Sales kind="return" />} />
-        <Route path="/canceled" element={<Canceled />} />
-        <Route path="/reports/sales" element={<SalesStats />} />
-        <Route path="/reports/shifts" element={<ShiftsReport />} />
-        <Route path="/reports/cashiers" element={<CashiersReport />} />
-        <Route path="/reports/discounts" element={<DiscountsReport />} />
-        <Route path="/reports/pnl" element={<PnlReport />} />
-        <Route path="/reports/abc" element={<AbcReport />} />
-        <Route path="/customers" element={<Contractors kind="customer" />} />
-        <Route path="/suppliers" element={<Contractors kind="supplier" />} />
-        <Route path="/profile" element={<Profile />} />
-        <Route path="/users" element={<Users />} />
-        <Route path="/registers" element={<Registers />} />
-        <Route path="/stores" element={<Stores />} />
-      </Route>
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+    <Suspense fallback={pageLoading}>
+      <Routes>
+        <Route path="/pos" element={<Pos />} />
+        <Route element={<Layout />}>
+          <Route path="/" element={<Dashboard />} />
+          <Route path="/products" element={<Products />} />
+          <Route path="/products/new" element={<ProductCard />} />
+          <Route path="/products/:id" element={<ProductCard />} />
+          <Route path="/catalog" element={<Catalog />} />
+          <Route path="/catalog/starter" element={<NewStore />} />
+          <Route path="/quick" element={<QuickProducts />} />
+          <Route path="/stock" element={<Stock />} />
+          <Route path="/invoice" element={<InvoiceImport />} />
+          <Route path="/market" element={<Market />} />
+          <Route path="/market/:id" element={<MarketCompany />} />
+          <Route path="/cart" element={<CartPage />} />
+          <Route path="/orders" element={<Orders />} />
+          <Route path="/orders/:id" element={<OrderView />} />
+          <Route path="/docs/:kind" element={<StockDocs />} />
+          <Route path="/docs/:kind/:id" element={<StockDocEditor />} />
+          <Route path="/sales" element={<Sales kind="sale" />} />
+          <Route path="/returns" element={<Sales kind="return" />} />
+          <Route path="/canceled" element={<Canceled />} />
+          <Route path="/reports/sales" element={<SalesStats />} />
+          <Route path="/reports/shifts" element={<ShiftsReport />} />
+          <Route path="/reports/cashiers" element={<CashiersReport />} />
+          <Route path="/reports/discounts" element={<DiscountsReport />} />
+          <Route path="/reports/pnl" element={<PnlReport />} />
+          <Route path="/reports/abc" element={<AbcReport />} />
+          <Route path="/customers" element={<Contractors kind="customer" />} />
+          <Route path="/suppliers" element={<Contractors kind="supplier" />} />
+          <Route path="/profile" element={<Profile />} />
+          <Route path="/users" element={<Users />} />
+          <Route path="/registers" element={<Registers />} />
+          <Route path="/stores" element={<Stores />} />
+        </Route>
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </Suspense>
   );
 }

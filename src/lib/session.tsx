@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { User } from '@supabase/supabase-js';
+import { queryClient } from './queryClient';
 import { db, q } from './supabase';
 import type { Branch, Company, Org, Register, Role, Store } from './types';
 
@@ -77,6 +78,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const userId = user?.id;
+
+  // кэш запросов принадлежит входу: после выхода или смены пользователя чужие данные не показываются
+  useEffect(() => {
+    queryClient.clear();
+  }, [userId]);
 
   const reload = useCallback(async () => {
     if (!userId) {

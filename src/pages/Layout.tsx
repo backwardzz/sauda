@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { Suspense, useEffect, useRef, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useCarts } from '../lib/cart';
 import { useSession } from '../lib/session';
@@ -227,7 +227,10 @@ export function Layout() {
         </div>
       </header>
       <main className="page">
-        <Outlet />
+        {/* страницы грузятся по требованию: меню остаётся на месте, пока подгружается код страницы */}
+        <Suspense fallback={<div className="muted">Загрузка…</div>}>
+          <Outlet />
+        </Suspense>
       </main>
     </div>
   );

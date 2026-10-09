@@ -1,7 +1,7 @@
 // Сквозная проверка серверной логики на локальной базе (npm run db:start перед запуском).
 // Создаёт магазины и компанию со случайными тестовыми пользователями и проверяет склад, кассу, отчёты, заказы и изоляцию.
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import { randomBytes } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 
 const env = Object.fromEntries(
@@ -176,10 +176,15 @@ async function main() {
   eq('остаток яблок после продажи', stockAfterSale.find((r: Row) => r.id === apples.id)?.qty, 9.25);
 
   // оптовая продажа
-  const wholesale = await must(a.rpc('create_sale', {
-    p_shift: shift, p_items: [{ product_id: cola.id, qty: 10, price: 400 }],
-  }));
+  const wholesaleSale = { p_shift: shift, p_items: [{ product_id: cola.id, qty: 10, price: 400 }], p_client_id: randomUUID() };
+  const wholesale = await must(a.rpc('create_sale', wholesaleSale));
   eq('оптовая цена принята', wholesale.total, 4000);
+  // ответ на оплату потерялся, касса отправляет тот же чек ещё раз
+  const repeated = await must(a.rpc('create_sale', wholesaleSale));
+  check('повтор чека возвращает проведённый, а не пробивает второй', repeated.id === wholesale.id && repeated.repeated === true, repeated);
+  eq('повтор не списал товар второй раз', (await must(a.from('sales').select('id').eq('client_id', wholesaleSale.p_client_id))).length, 1);
+  await fails('тот же id чека в чужой смене не раскрывает продажу',
+    b.rpc('create_sale', { ...wholesaleSale, p_items: [{ product_id: cola.id, qty: 1, price: 450 }] }), 'Нет доступа');
 
   console.log('Возврат');
   const colaLine = saleRow.sale_items.find((i: { product_id: string }) => i.product_id === cola.id);
@@ -233,6 +238,8 @@ async function main() {
   eq('отчёт по смене: чеков', shiftRep.receipts, 2);
   await fails('в закрытую смену продать нельзя',
     a.rpc('create_sale', { p_shift: shift, p_items: [{ product_id: cola.id, qty: 1, price: 450 }] }), 'закрыта');
+  check('повтор проведённого чека проходит и после закрытия смены',
+    (await must(a.rpc('create_sale', wholesaleSale))).id === wholesale.id);
 
   console.log('Сотрудники');
   const { db: c, email: cashierEmail } = await signUp('cashier');

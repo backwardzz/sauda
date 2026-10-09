@@ -3,6 +3,7 @@ name: Deploy to GitHub Pages
 on:
   push:
     branches: [main]
+  pull_request:
   workflow_dispatch:
 
 permissions:
@@ -11,11 +12,37 @@ permissions:
   id-token: write
 
 concurrency:
-  group: pages
+  # своя очередь у каждой ветки: проверка пул-реквеста не отменяет выкладку main
+  group: pages-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  # Проверки чистых функций и сквозной тест серверной логики на локальной базе в Docker.
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: npm run test:units
+      - run: npm run db:start
+      # типы клиента не отстали от миграций
+      - run: npm run db:types -- --check
+      # адрес и ключи локальной базы печатает сам Supabase CLI
+      - run: |
+          eval "$(npx supabase status -o env)"
+          printf 'VITE_SUPABASE_URL=%s\nVITE_SUPABASE_ANON_KEY=%s\nSUPABASE_SERVICE_ROLE_KEY=%s\n' \
+            "$API_URL" "$ANON_KEY" "$SERVICE_ROLE_KEY" > .env.local
+      - run: npx tsx scripts/smoke.ts
+
   build:
+    needs: test
+    # пул-реквесты только проверяются, на сайт уходит main
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     # Облачная база Supabase. Переменные репозитория (Settings → Variables) перекрывают эти значения.
     # Publishable-ключ публичный: он и так попадает в собранный сайт, доступ ограничивают правила RLS.
@@ -28,7 +55,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
       - run: npm ci
       - run: npm run build
