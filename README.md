@@ -139,6 +139,20 @@ npm run build      # проверка типов и сборка в dist/
 В облачном проекте оставьте включённым подтверждение почты: приглашения сотрудников срабатывают только для
 подтверждённого адреса.
 
+## Регистрация и вход
+
+- **Регистрация:** магазин, компания или сотрудник (по приглашению — без своей организации), имя, вид магазина,
+  согласие с офертой и политикой (`#/terms`, `#/privacy`, тексты-черновики в `src/pages/Legal.tsx`;
+  при их изменении поменяйте `TERMS_VERSION` в `src/pages/Auth.tsx` — согласие спросят заново), откуда узнали и промокод.
+  Всё это хранится в `user_metadata` пользователя (Supabase → Authentication → Users).
+- **Восстановление пароля:** «Забыли пароль?» → код из письма → новый пароль. В облаке в Authentication → Emails →
+  Reset password вставьте шаблон `supabase/templates/recovery.html` (в нём код `{{ .Token }}`), тема:
+  «Sauda: код для нового пароля {{ .Token }}».
+- **Вход через Google** (кнопка скрыта, пока не настроено): в Google Cloud Console создать OAuth Client (Web),
+  Authorized redirect URI — `https://<проект>.supabase.co/auth/v1/callback`; в Supabase → Authentication →
+  Sign In / Providers → Google указать Client ID и Secret; в репозитории GitHub — переменная `VITE_GOOGLE_AUTH=1`.
+  Согласие с офертой у вошедших через Google спрашивается на следующем шаге.
+
 ## Фискализация (Webkassa)
 
 Sauda не касса: чеки фискализирует облачная касса [Webkassa](https://webkassa.kz), она же передаёт их в ОФД.

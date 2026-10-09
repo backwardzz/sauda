@@ -28,6 +28,9 @@ interface SessionState {
   setStoreId: (id: string) => void;
   reload: () => Promise<void>;
   signOut: () => Promise<void>;
+  /** Вход по коду или ссылке восстановления: прежде чем открыть кабинет, нужно задать новый пароль. */
+  recovering: boolean;
+  setRecovering: (on: boolean) => void;
 }
 
 const Ctx = createContext<SessionState | null>(null);
@@ -58,6 +61,17 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [company, setCompany] = useState<Company | null>(null);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [storeId, setStoreIdState] = useState<string | null>(stored('sauda:store'));
+  // флаг переживает перезагрузку вкладки: иначе после обновления страницы кабинет откроется со старым паролем
+  const [recovering, setRecoveringState] = useState(() => {
+    try { return sessionStorage.getItem('sauda:recovery') === '1'; } catch { return false; }
+  });
+  const setRecovering = useCallback((on: boolean) => {
+    try {
+      if (on) sessionStorage.setItem('sauda:recovery', '1');
+      else sessionStorage.removeItem('sauda:recovery');
+    } catch { /* без хранилища флаг живёт до перезагрузки */ }
+    setRecoveringState(on);
+  }, []);
 
   useEffect(() => {
     db.auth.getSession().then(async ({ data }) => {
@@ -72,11 +86,13 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       }
       setUser(data.session?.user ?? null);
     });
-    const { data } = db.auth.onAuthStateChange((_event, session) => {
+    const { data } = db.auth.onAuthStateChange((event, session) => {
+      // переход по ссылке «восстановить пароль» из письма
+      if (event === 'PASSWORD_RECOVERY') setRecovering(true);
       setUser((prev) => (prev?.id === session?.user?.id ? prev : (session?.user ?? null)));
     });
     return () => data.subscription.unsubscribe();
-  }, []);
+  }, [setRecovering]);
 
   const userId = user?.id;
 
@@ -161,10 +177,13 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       },
       reload,
       signOut: async () => {
+        setRecovering(false);
         await db.auth.signOut();
       },
+      recovering,
+      setRecovering,
     };
-  }, [user, loading, memberships, orgId, stores, storeId, registers, company, branches, reload]);
+  }, [user, loading, memberships, orgId, stores, storeId, registers, company, branches, reload, recovering, setRecovering]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

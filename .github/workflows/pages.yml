@@ -57,6 +57,8 @@ jobs:
       VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY || 'sb_publishable_5GFbbpwjzqzXNZzRM3FRaQ_CeHA-9Xa' }}
       # Ключ сайта Cloudflare Turnstile (тоже публичный). Пока переменная не задана, сайт собирается без капчи.
       VITE_TURNSTILE_SITE_KEY: ${{ vars.VITE_TURNSTILE_SITE_KEY }}
+      # кнопка «Войти через Google»: включить после настройки провайдера Google в Supabase
+      VITE_GOOGLE_AUTH: ${{ vars.VITE_GOOGLE_AUTH }}
       # Отчёты об ошибках (sentry.io → проект React → Client Keys). Пусто — Sentry не подключается.
       VITE_SENTRY_DSN: ${{ vars.VITE_SENTRY_DSN }}
       VITE_RELEASE: ${{ github.sha }}

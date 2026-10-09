@@ -18,6 +18,7 @@ import { errorText } from '../src/lib/supabase';
 import type { Category, City, DocLine, Offer, Variant, VariantStats } from '../src/lib/types';
 import { fullName, priceRange, sizeHints, splitName } from '../src/lib/variants';
 import { periodRange } from '../src/ui/Period';
+import { passwordChecks } from '../src/pages/Auth';
 import { checkRequest, moneyRequest, unwrap, vatIn } from '../supabase/functions/fiscal/webkassa';
 
 let failed = 0;
@@ -331,6 +332,13 @@ eq('чек на 0 (полная скидка) — оплата наличным�
 eq('внесение и изъятие', [moneyRequest('t', 'c', 'in', 1000, 'op').OperationType, moneyRequest('t', 'c', 'out', 500.555, 'op').Sum], [0, 500.56]);
 eq('ответ Webkassa', [unwrap({ Data: { a: 1 } }), unwrap({ Errors: [{ Code: 11, Text: 'Смена превысила 24 часа' }] }), unwrap({})],
   [{ data: { a: 1 } }, { error: 'Смена превысила 24 часа', code: 11 }, { error: 'Webkassa вернула пустой ответ' }]);
+
+console.log('Пароль при регистрации');
+const pw = (p: string) => passwordChecks(p).map((c) => c.ok);
+eq('короткий, без цифр', pw('abc'), [false, true, false]);
+eq('восемь символов с буквами и цифрами', pw('abcdef12'), [true, true, true]);
+eq('кириллица считается буквами', pw('пароль2026'), [true, true, true]);
+eq('одни цифры', pw('12345678'), [true, false, true]);
 
 console.log(failed ? `\nПровалено проверок: ${failed}` : '\nВсе проверки пройдены');
 process.exit(failed ? 1 : 0);

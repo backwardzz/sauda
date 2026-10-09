@@ -1,7 +1,8 @@
 import { useState, type FormEvent } from 'react';
+import { Link } from 'react-router-dom';
 import { formatPhone } from '../lib/format';
+import { useSession } from '../lib/session';
 import { db, errorText } from '../lib/supabase';
-import type { OrgKind } from '../lib/types';
 import { Captcha, CAPTCHA_KEY } from '../ui/Captcha';
 import { CitySelect } from '../ui/CitySelect';
 import { PhoneInput } from '../ui/PhoneInput';
@@ -12,31 +13,61 @@ const loginEmail = (login: string) => (login.includes('@') ? login : `${login}@s
 /** Куда вернуться по ссылке из письма: адрес сайта без «#…» (на Pages сайт лежит в подпапке). */
 const confirmUrl = () => window.location.origin + window.location.pathname;
 
+const env = (import.meta as { env?: Record<string, string | undefined> }).env ?? {};
+/** Вход через Google включается после настройки провайдера в Supabase (README, раздел «Вход через Google»). */
+const GOOGLE = env.VITE_GOOGLE_AUTH === '1';
+
 /** Длина кода из письма: должна совпадать с настройкой сервера (auth.email.otp_length). */
 const CODE_LENGTH = 6;
-const PASSWORD_MIN = 8;
+export const PASSWORD_MIN = 8;
+/** Версия текстов оферты и политики: при их изменении согласие спрашивается заново. */
+export const TERMS_VERSION = '2026-10-10';
 
-/** Чем плох новый пароль, или null, если он подходит. */
-function passwordProblem(p: string): string | null {
-  if (p.length < PASSWORD_MIN) return `Пароль слишком короткий: нужно минимум ${PASSWORD_MIN} символов`;
-  if (!/\p{L}/u.test(p) || !/\d/.test(p)) return 'В пароле должны быть и буквы, и цифры';
-  return null;
+/** Требования к новому паролю: что выполнено, а что ещё нет. */
+export function passwordChecks(p: string) {
+  return [
+    { ok: p.length >= PASSWORD_MIN, text: `не короче ${PASSWORD_MIN} символов` },
+    { ok: /\p{L}/u.test(p), text: 'есть буквы' },
+    { ok: /\d/.test(p), text: 'есть цифры' },
+  ];
 }
 
+/** Строка требований под полем пароля: зелёным — выполненное. */
+export function PasswordHint({ value }: { value: string }) {
+  return (
+    <span className="hint pw-checks">
+      {passwordChecks(value).map((c) => (
+        <span key={c.text} className={value && c.ok ? 'ok-text' : ''}>{value && c.ok ? '✓' : '·'} {c.text}</span>
+      ))}
+    </span>
+  );
+}
+
+type Mode = 'login' | 'register' | 'reset';
+type Kind = 'store' | 'company' | 'employee';
+
+const SOURCES = ['Знакомые или коллеги', 'Instagram', 'TikTok', 'WhatsApp или Telegram', 'Поиск в интернете', 'Представитель компании-поставщика', 'Другое'];
+
 export function AuthPage() {
-  const [mode, setMode] = useState<'login' | 'register'>('login');
-  const [kind, setKind] = useState<OrgKind>('store');
+  const { setRecovering } = useSession();
+  const [mode, setMode] = useState<Mode>('login');
+  const [kind, setKind] = useState<Kind>('store');
+  const [business, setBusiness] = useState<'grocery' | 'pharmacy'>('grocery');
+  const [fullName, setFullName] = useState('');
   const [name, setName] = useState('');
   const [city, setCity] = useState<number | null>(null);
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [password2, setPassword2] = useState('');
+  const [source, setSource] = useState('');
+  const [promo, setPromo] = useState('');
+  const [agree, setAgree] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [password2, setPassword2] = useState('');
   const [notice, setNotice] = useState<string | null>(null);
-  // адрес, на который ушло письмо с кодом: вместо формы показывается окно ввода кода
-  const [sentTo, setSentTo] = useState<string | null>(null);
+  // письмо с кодом ушло: вместо формы показывается окно ввода кода (подтверждение почты или восстановление пароля)
+  const [sentTo, setSentTo] = useState<{ email: string; type: 'signup' | 'recovery' } | null>(null);
   const [code, setCode] = useState('');
   const [captcha, setCaptcha] = useState<string | null>(null);
   const [round, setRound] = useState(0);
@@ -45,13 +76,20 @@ export function AuthPage() {
   const needCaptcha = Boolean(CAPTCHA_KEY) && !captcha;
   // токен капчи одноразовый: после любого запроса проверка проходит заново
   const nextCaptcha = () => { setCaptcha(null); setRound((r) => r + 1); };
+  const go = (m: Mode) => { setMode(m); setError(null); setNotice(null); };
+  const employee = kind === 'employee';
+
+  const sendRecovery = (to: string) =>
+    db.auth.resetPasswordForEmail(to, { redirectTo: confirmUrl(), captchaToken });
 
   const resend = async () => {
     if (!sentTo) return;
     setError(null);
     setNotice(null);
     setBusy(true);
-    const { error } = await db.auth.resend({ type: 'signup', email: sentTo, options: { emailRedirectTo: confirmUrl(), captchaToken } });
+    const { error } = sentTo.type === 'signup'
+      ? await db.auth.resend({ type: 'signup', email: sentTo.email, options: { emailRedirectTo: confirmUrl(), captchaToken } })
+      : await sendRecovery(sentTo.email);
     setBusy(false);
     nextCaptcha();
     if (error) setError(errorText(error));
@@ -64,9 +102,20 @@ export function AuthPage() {
     setError(null);
     setNotice(null);
     setBusy(true);
-    // после верного кода сессия появляется сама, и приложение открывает следующий шаг
-    const { error } = await db.auth.verifyOtp({ email: sentTo, token: code, type: 'signup' });
+    // после кода восстановления сессия появляется сразу: флаг держит экран «новый пароль» вместо кабинета
+    if (sentTo.type === 'recovery') setRecovering(true);
+    const { error } = await db.auth.verifyOtp({ email: sentTo.email, token: code, type: sentTo.type });
     setBusy(false);
+    if (error) {
+      if (sentTo.type === 'recovery') setRecovering(false);
+      setError(errorText(error));
+    }
+  };
+
+  const google = async () => {
+    setError(null);
+    if (mode === 'register' && !agree) return setError('Отметьте согласие с офертой и политикой конфиденциальности');
+    const { error } = await db.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: confirmUrl() } });
     if (error) setError(errorText(error));
   };
 
@@ -75,10 +124,11 @@ export function AuthPage() {
     setError(null);
     setNotice(null);
     if (mode === 'register') {
-      if (city == null) return setError('Выберите город');
-      const weak = passwordProblem(password);
-      if (weak) return setError(weak);
+      if (!employee && city == null) return setError('Выберите город');
+      const weak = passwordChecks(password).find((c) => !c.ok);
+      if (weak) return setError(`Пароль: ${weak.text}`);
       if (password !== password2) return setError('Пароли не совпадают');
+      if (!agree) return setError('Отметьте согласие с офертой и политикой конфиденциальности');
     }
     if (needCaptcha) return setError('Подтвердите, что вы не робот');
     setBusy(true);
@@ -86,6 +136,12 @@ export function AuthPage() {
       if (mode === 'login') {
         const { error } = await db.auth.signInWithPassword({ email: loginEmail(email.trim()), password, options: { captchaToken } });
         if (error) throw error;
+      } else if (mode === 'reset') {
+        const { error } = await sendRecovery(email.trim());
+        if (error) throw error;
+        // письмо уходит только на существующий адрес, но ответ одинаковый — чтобы адреса нельзя было перебирать
+        setSentTo({ email: email.trim(), type: 'recovery' });
+        setCode('');
       } else {
         const { data, error } = await db.auth.signUp({
           email: email.trim(),
@@ -94,14 +150,23 @@ export function AuthPage() {
           options: {
             emailRedirectTo: confirmUrl(),
             captchaToken,
-            data: { org_name: name.trim(), account_kind: kind, city_id: city, phone: formatPhone(phone) },
+            data: {
+              full_name: fullName.trim(),
+              account_kind: kind,
+              ...(employee ? {} : { org_name: name.trim(), city_id: city, phone: formatPhone(phone) }),
+              ...(kind === 'store' ? { business } : {}),
+              source,
+              promo: promo.trim().toUpperCase(),
+              terms_version: TERMS_VERSION,
+              terms_accepted_at: new Date().toISOString(),
+            },
           },
         });
         if (error) throw error;
         // на занятый адрес сервер отвечает так же, как на новый, только без способов входа — чтобы адреса нельзя было перебирать
         if (data.user && data.user.identities?.length === 0) throw new Error('User already registered');
         if (!data.session) {
-          setSentTo(email.trim());
+          setSentTo({ email: email.trim(), type: 'signup' });
           setCode('');
           setPassword('');
           setPassword2('');
@@ -116,14 +181,19 @@ export function AuthPage() {
   };
 
   if (sentTo) {
+    const recovery = sentTo.type === 'recovery';
     return (
       <div className="auth">
         <form className="auth-card stack" onSubmit={verify}>
           <div>
             <div className="brand"><span className="brand-mark">S</span>Sauda</div>
-            <h2>Введите код из письма</h2>
+            <h2>{recovery ? 'Восстановление пароля' : 'Введите код из письма'}</h2>
           </div>
-          <p>Мы отправили {CODE_LENGTH}-значный код на <b>{sentTo}</b>.</p>
+          <p>
+            {recovery ? 'Если такой аккаунт есть, мы отправили ' : 'Мы отправили '}
+            {CODE_LENGTH}-значный код на <b>{sentTo.email}</b>.
+            {recovery && ' После кода вы зададите новый пароль.'}
+          </p>
           <input
             className="code-input"
             value={code}
@@ -144,7 +214,7 @@ export function AuthPage() {
           <Captcha round={round} onToken={setCaptcha} />
           <div className="auth-links">
             <button type="button" className="link-btn" disabled={busy || needCaptcha} onClick={resend}>Отправить код ещё раз</button>
-            <button type="button" className="link-btn" onClick={() => { setSentTo(null); setError(null); setNotice(null); setMode('login'); }}>
+            <button type="button" className="link-btn" onClick={() => { setSentTo(null); go('login'); }}>
               Вернуться ко входу
             </button>
           </div>
@@ -153,22 +223,46 @@ export function AuthPage() {
     );
   }
 
+  if (mode === 'reset') {
+    return (
+      <div className="auth">
+        <form className="auth-card stack" onSubmit={submit}>
+          <div>
+            <div className="brand"><span className="brand-mark">S</span>Sauda</div>
+            <h2>Восстановление пароля</h2>
+            <p className="muted">Укажите почту аккаунта — пришлём код, чтобы задать новый пароль.</p>
+          </div>
+          <label className="field">
+            <span>Почта</span>
+            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoFocus autoComplete="email" />
+          </label>
+          <Captcha round={round} onToken={setCaptcha} />
+          {error && <p className="error-text">{error}</p>}
+          <button className="btn primary large" disabled={busy}>Прислать код</button>
+          <div className="auth-links">
+            <button type="button" className="link-btn" onClick={() => go('login')}>Вернуться ко входу</button>
+          </div>
+        </form>
+      </div>
+    );
+  }
+
   return (
     <div className="auth">
-      <form className="auth-card stack" onSubmit={submit}>
+      <form className={`auth-card stack ${mode === 'register' ? 'wide' : ''}`} onSubmit={submit}>
         <div>
           <div className="brand"><span className="brand-mark">S</span>Sauda</div>
           <p className="muted">Учёт и касса для магазинов, каталог, склад и заказы для компаний</p>
         </div>
         <div className="segmented">
-          <button type="button" className={mode === 'login' ? 'active' : ''} onClick={() => setMode('login')}>Вход</button>
-          <button type="button" className={mode === 'register' ? 'active' : ''} onClick={() => setMode('register')}>Регистрация</button>
+          <button type="button" className={mode === 'login' ? 'active' : ''} onClick={() => go('login')}>Вход</button>
+          <button type="button" className={mode === 'register' ? 'active' : ''} onClick={() => go('register')}>Регистрация</button>
         </div>
         {mode === 'register' && (
           <>
             <div className="field">
               <span>Кто вы?</span>
-              <div className="choice">
+              <div className="choice three">
                 <button type="button" className={kind === 'store' ? 'active' : ''} onClick={() => setKind('store')}>
                   <b>Магазин</b>
                   <span>Учёт товаров, касса, заказы у компаний</span>
@@ -177,23 +271,53 @@ export function AuthPage() {
                   <b>Компания</b>
                   <span>Производитель или дистрибьютор: каталог, склад и заказы магазинов</span>
                 </button>
+                <button type="button" className={employee ? 'active' : ''} onClick={() => setKind('employee')}>
+                  <b>Сотрудник</b>
+                  <span>Меня пригласили в магазин или компанию</span>
+                </button>
               </div>
             </div>
-            <label className="field">
-              <span>{kind === 'store' ? 'Название магазина' : 'Название компании'}</span>
-              <input value={name} onChange={(e) => setName(e.target.value)} required autoComplete="organization"
-                placeholder={kind === 'store' ? 'ИП Иванов' : 'ТОО «Молочный завод»'} />
-            </label>
-            <div className="form-grid">
+            {employee && (
+              <p className="hint">
+                Укажите почту, на которую владелец отправил приглашение: после входа вы сразу попадёте в его магазин или компанию.
+              </p>
+            )}
+            {kind === 'store' && (
               <div className="field">
-                <span>Город</span>
-                <CitySelect value={city} onChange={setCity} aria-label="Город" />
+                <span>Чем торгуете</span>
+                <div className="choice small">
+                  <button type="button" className={business === 'grocery' ? 'active' : ''} onClick={() => setBusiness('grocery')}>
+                    <b>Продукты и товары для дома</b>
+                  </button>
+                  <button type="button" className={business === 'pharmacy' ? 'active' : ''} onClick={() => setBusiness('pharmacy')}>
+                    <b>Аптека <span className="badge warn">скоро</span></b>
+                  </button>
+                </div>
               </div>
-              <label className="field">
-                <span>Телефон</span>
-                <PhoneInput value={phone} onChange={setPhone} required autoComplete="tel" />
-              </label>
-            </div>
+            )}
+            <label className="field">
+              <span>Ваше имя</span>
+              <input value={fullName} onChange={(e) => setFullName(e.target.value)} required autoComplete="name" placeholder="Айгерим Сапарова" />
+            </label>
+            {!employee && (
+              <>
+                <label className="field">
+                  <span>{kind === 'store' ? 'Название магазина' : 'Название компании'}</span>
+                  <input value={name} onChange={(e) => setName(e.target.value)} required autoComplete="organization"
+                    placeholder={kind === 'store' ? 'ИП Иванов' : 'ТОО «Молочный завод»'} />
+                </label>
+                <div className="form-grid">
+                  <div className="field">
+                    <span>Город</span>
+                    <CitySelect value={city} onChange={setCity} aria-label="Город" />
+                  </div>
+                  <label className="field">
+                    <span>Телефон</span>
+                    <PhoneInput value={phone} onChange={setPhone} required autoComplete="tel" />
+                  </label>
+                </div>
+              </>
+            )}
           </>
         )}
         <label className="field">
@@ -216,13 +340,47 @@ export function AuthPage() {
             minLength={mode === 'login' ? 6 : PASSWORD_MIN}
             autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
           />
-          {mode === 'register' && <span className="hint">Не короче {PASSWORD_MIN} символов, с буквами и цифрами</span>}
+          {mode === 'register' && <PasswordHint value={password} />}
         </label>
+        {mode === 'login' && (
+          <div className="auth-links" style={{ justifyContent: 'flex-end', marginTop: -4 }}>
+            <button type="button" className="link-btn" onClick={() => go('reset')}>Забыли пароль?</button>
+          </div>
+        )}
         {mode === 'register' && (
-          <label className="field">
-            <span>Пароль ещё раз</span>
-            <input type="password" value={password2} onChange={(e) => setPassword2(e.target.value)} required autoComplete="new-password" />
-          </label>
+          <>
+            <label className="field">
+              <span>Пароль ещё раз</span>
+              <input type="password" value={password2} onChange={(e) => setPassword2(e.target.value)} required autoComplete="new-password" />
+              {password2 && (
+                <span className={`hint ${password2 === password ? 'ok-text' : 'error-text'}`}>
+                  {password2 === password ? '✓ пароли совпадают' : 'пароли не совпадают'}
+                </span>
+              )}
+            </label>
+            {!employee && (
+              <div className="form-grid">
+                <label className="field">
+                  <span>Откуда узнали о Sauda</span>
+                  <select value={source} onChange={(e) => setSource(e.target.value)}>
+                    <option value="">Не скажу</option>
+                    {SOURCES.map((s) => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </label>
+                <label className="field">
+                  <span>Промокод</span>
+                  <input value={promo} onChange={(e) => setPromo(e.target.value)} placeholder="если есть" autoComplete="off" maxLength={32} />
+                </label>
+              </div>
+            )}
+            <label className="check-row">
+              <input type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} />
+              <span>
+                Принимаю <Link to="/terms" target="_blank">условия оферты</Link> и{' '}
+                <Link to="/privacy" target="_blank">политику конфиденциальности</Link>, согласен на обработку персональных данных
+              </span>
+            </label>
+          </>
         )}
         <Captcha round={round} onToken={setCaptcha} />
         {error && <p className="error-text">{error}</p>}
@@ -230,6 +388,20 @@ export function AuthPage() {
         <button className="btn primary large" disabled={busy}>
           {mode === 'login' ? 'Войти' : 'Создать аккаунт'}
         </button>
+        {GOOGLE && (
+          <>
+            <div className="auth-or"><span>или</span></div>
+            <button type="button" className="btn large" onClick={google}>
+              <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true">
+                <path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.1 7.9 3l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z" />
+                <path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.1 7.9 3l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z" />
+                <path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-7.9l-6.5 5C9.5 39.6 16.2 44 24 44z" />
+                <path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z" />
+              </svg>
+              {mode === 'login' ? 'Войти через Google' : 'Зарегистрироваться через Google'}
+            </button>
+          </>
+        )}
       </form>
     </div>
   );
