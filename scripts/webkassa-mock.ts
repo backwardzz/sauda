@@ -15,7 +15,7 @@ createServer((req, res) => {
   req.on('end', () => {
     const method = (req.url ?? '').replace(/^\/api\//, '');
     const body = raw ? JSON.parse(raw) : {};
-    console.log(method, JSON.stringify({ ...body, Password: body.Password ? '***' : undefined }));
+    console.log('%s %s', method, JSON.stringify({ ...body, Password: body.Password ? '***' : undefined }));
     const reply = (data: unknown) => {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(data));

@@ -26,6 +26,9 @@ interface Credentials {
   enabled: boolean;
 }
 
+/** Ошибка, текст которой показывается кассиру. Остальные ошибки пишутся в журнал функции, а кассир видит общий текст. */
+class UserError extends Error {}
+
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { ...cors, 'Content-Type': 'application/json' } });
 
@@ -46,7 +49,7 @@ async function call<T>(method: string, body: unknown): Promise<{ data: T } | { e
 
 async function token(c: Credentials): Promise<string> {
   const r = await call<{ Token: string }>('Authorize', { Login: c.login, Password: c.password });
-  if ('error' in r) throw new Error(`Вход в Webkassa: ${r.error}`);
+  if ('error' in r) throw new UserError(`Вход в Webkassa: ${r.error}`);
   return r.data.Token;
 }
 
@@ -168,6 +171,8 @@ Deno.serve(async (req) => {
     });
     return done ? json({ ...result, z: z.data }) : json({ ...result, error: `Z-отчёт: ${z.error}` }, 502);
   } catch (e) {
-    return json({ error: e instanceof Error ? e.message : String(e) }, 500);
+    if (e instanceof UserError) return json({ error: e.message }, 502);
+    console.error(e);
+    return json({ error: 'Ошибка сервера фискализации, попробуйте ещё раз' }, 500);
   }
 });
