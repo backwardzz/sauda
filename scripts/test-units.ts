@@ -14,6 +14,7 @@ import { parseImport } from '../src/lib/importParse';
 import { decodeInvoice, encodeInvoice, invoiceUnit } from '../src/lib/invoice';
 import { categoryTree } from '../src/lib/refs';
 import { parseStockImport } from '../src/lib/stockImport';
+import { errorText } from '../src/lib/supabase';
 import type { Category, City, DocLine, Offer, Variant, VariantStats } from '../src/lib/types';
 import { fullName, priceRange, sizeHints, splitName } from '../src/lib/variants';
 import { periodRange } from '../src/ui/Period';
@@ -294,6 +295,19 @@ eq('точка, регистр и миллилитры', [sizeHints(['0.5 Л'], 
 eq('без видов — по единице измерения', [sizeHints([], 'л').length, sizeHints([], 'кг')[0], sizeHints([], 'шт')],
   [7, '50 г', ['0,5 л', '1 л', '1,5 л', '100 г', '200 г', '250 г']]);
 eq('диапазон цен', [priceRange([]), priceRange([{ price: 100 }]), priceRange([{ price: '250' as unknown as number }, { price: 90 }])], [null, [100, 100], [90, 250]]);
+
+console.log('Тексты ошибок');
+eq('ограничение по имени важнее кода', errorText({ code: '23505', message: 'duplicate key value violates unique constraint "products_barcode_uq"' }),
+  'Товар с таким штрихкодом уже есть');
+eq('отказ RLS по коду, при любом тексте', errorText({ code: '42501', message: 'new row violates policy' }), 'Недостаточно прав для этого действия');
+eq('внешний ключ по коду', errorText({ code: '23503', message: 'update or delete on table' }), 'Запись используется в других документах');
+const authError = Object.assign(new Error('Something changed in wording'), { code: 'invalid_credentials' });
+eq('ошибка входа по коду Supabase Auth', errorText(authError), 'Неверная почта или пароль');
+eq('без кода — по тексту', [errorText(new TypeError('Failed to fetch')), errorText({ message: 'Password should be at least 6 characters' })],
+  ['Нет связи с сервером', 'Пароль слишком короткий: нужно минимум 6 символов']);
+eq('текст из SQL-функции проходит как есть', errorText({ code: 'P0001', message: 'Смена закрыта' }), 'Смена закрыта');
+eq('не объект', [errorText('строка'), errorText(null)], ['строка', 'null']);
+
 
 console.log(failed ? `\nПровалено проверок: ${failed}` : '\nВсе проверки пройдены');
 process.exit(failed ? 1 : 0);
