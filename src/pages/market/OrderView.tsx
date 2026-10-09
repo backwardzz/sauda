@@ -31,6 +31,8 @@ export function OrderView() {
   const o = data.data;
   useEffect(() => {
     if (o) setReply(o.supplier_comment);
+    // заказ перечитывается новым объектом: поле ответа сбрасывается, только если поменялся сам ответ
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [o?.id, o?.supplier_comment]);
 
   const isSupplier = o?.supplier_org === org.id;

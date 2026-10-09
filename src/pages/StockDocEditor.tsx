@@ -14,6 +14,8 @@ import { ProductSearch } from '../ui/ProductSearch';
 import { toast } from '../ui/toast';
 
 const VISIBLE = 300;
+// пока строки грузятся — один и тот же пустой список, чтобы фильтры ниже не пересчитывались на каждом рендере
+const NO_LINES: DocLine[] = [];
 
 interface Payment {
   id: string;
@@ -61,6 +63,8 @@ export function StockDocEditor() {
   useEffect(reloadLines, [id]);
   useEffect(() => {
     if (d) setComment(d.comment);
+    // после сохранения документ перечитывается новым объектом: поле обновляется, только если поменялся сам комментарий
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [d?.id, d?.comment]);
 
   const payments = useQuery(
@@ -72,7 +76,7 @@ export function StockDocEditor() {
   );
 
   const validKind = isDocKind(kind) ? kind : null;
-  const all = lines ?? [];
+  const all = lines ?? NO_LINES;
   const term = search.trim().toLowerCase();
   const shown = useMemo(
     () =>
