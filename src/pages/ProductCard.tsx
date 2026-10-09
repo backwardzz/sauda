@@ -3,10 +3,11 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { generateBarcode } from '../lib/barcode';
 import { dateTime, markupPct, parseNum, qty, round2 } from '../lib/format';
 import { useChanged, useQuery } from '../lib/hooks';
+import { fullProductName } from '../lib/productAttrs';
 import { categoryTree, useCategories, useContractors, useQuickGroups } from '../lib/refs';
 import { useWorkspace } from '../lib/session';
 import { db, q } from '../lib/supabase';
-import { MOVE_REASON, UNITS, type Product, type StockMove, type Unit } from '../lib/types';
+import { MOVE_REASON, PACK_UNITS, PACKAGES, SIZE_UNITS, UNITS, type PackUnit, type Product, type SizeUnit, type StockMove, type Unit } from '../lib/types';
 import { DataTable, type Column } from '../ui/DataTable';
 import { Icon } from '../ui/Icon';
 import { Confirm } from '../ui/Modal';
@@ -14,7 +15,14 @@ import { toast } from '../ui/toast';
 import { CategoryModal } from './CategoryModal';
 
 interface Form {
-  name: string;
+  /** Название без объёма, процента и упаковки: они в своих полях. */
+  title: string;
+  size: string;
+  sizeUnit: SizeUnit;
+  percent: string;
+  packQty: string;
+  packUnit: PackUnit;
+  packageName: string;
   unit: Unit;
   barcode: string;
   extra: string;
@@ -31,7 +39,7 @@ interface Form {
 }
 
 const EMPTY: Form = {
-  name: '', unit: 'шт', barcode: '', extra: '', sku: '', minStock: '', purchase: '', markup: '', sale: '',
+  title: '', size: '', sizeUnit: 'г', percent: '', packQty: '', packUnit: 'шт', packageName: '', unit: 'шт', barcode: '', extra: '', sku: '', minStock: '', purchase: '', markup: '', sale: '',
   wholesale: '', category: '', supplier: '', quickGroup: '', quickName: '',
 };
 
@@ -39,7 +47,9 @@ const str = (n: number | null | undefined) => (n == null || n === 0 ? '' : Strin
 
 function toForm(p: Product): Form {
   return {
-    name: p.name, unit: p.unit, barcode: p.barcode, extra: p.extra_barcodes.join(', '), sku: p.sku,
+    title: p.title, size: p.size_value == null ? '' : String(p.size_value), sizeUnit: p.size_unit ?? 'г',
+    percent: p.percent == null ? '' : String(p.percent), packQty: p.pack_qty == null ? '' : String(p.pack_qty),
+    packUnit: p.pack_unit ?? 'шт', packageName: p.package ?? '', unit: p.unit, barcode: p.barcode, extra: p.extra_barcodes.join(', '), sku: p.sku,
     minStock: p.min_stock == null ? '' : String(p.min_stock),
     purchase: str(p.purchase_price), markup: str(markupPct(p.purchase_price, p.sale_price)), sale: str(p.sale_price),
     wholesale: str(p.wholesale_price), category: p.category_id ?? '', supplier: p.supplier_id ?? '',
@@ -112,15 +122,30 @@ export function ProductCard() {
     } else set({ category: catId });
   };
 
+  const attrs = {
+    title: form.title.trim(),
+    size_value: parseNum(form.size) > 0 ? parseNum(form.size) : null,
+    size_unit: parseNum(form.size) > 0 ? form.sizeUnit : null,
+    percent: form.percent.trim() === '' ? null : parseNum(form.percent),
+    pack_qty: parseNum(form.packQty) > 0 ? Math.round(parseNum(form.packQty)) : null,
+    pack_unit: parseNum(form.packQty) > 0 ? form.packUnit : null,
+    package: form.packageName.trim() || null,
+  };
+  const fullName = fullProductName(attrs);
+
   const save = async () => {
-    if (!form.name.trim()) return toast.error('Укажите название');
+    if (!form.title.trim()) return toast.error('Укажите название');
+    const pct = form.percent.trim() === '' ? null : parseNum(form.percent);
+    if (pct != null && (pct < 0 || pct > 100)) return toast.error('Процент — от 0 до 100');
     if (!form.barcode.trim()) return toast.error('Укажите штрихкод или сгенерируйте внутренний');
     setBusy(true);
     try {
       const row = {
         org_id: org.id,
         kind,
-        name: form.name.trim(),
+        // name соберёт база из названия и полей ниже; здесь — то же самое для новой записи
+        name: fullName,
+        ...attrs,
         unit: form.unit,
         barcode: form.barcode.trim(),
         extra_barcodes: [...new Set(form.extra.split(/[;,\s]+/).map((c) => c.trim()).filter(Boolean))],
@@ -205,8 +230,37 @@ export function ProductCard() {
             <div className="form-grid">
               <label className="field wide">
                 <span>Название <b>*</b></span>
-                <input value={form.name} onChange={(e) => set({ name: e.target.value })} autoFocus={!id} />
+                <input value={form.title} onChange={(e) => set({ title: e.target.value })} autoFocus={!id}
+                  placeholder="без объёма и упаковки: Coca-Cola" />
               </label>
+              <div className="field">
+                <span>Объём / вес</span>
+                <div className="input-group">
+                  <input value={form.size} onChange={(e) => set({ size: e.target.value })} inputMode="decimal" placeholder="0,5" />
+                  <select value={form.sizeUnit} onChange={(e) => set({ sizeUnit: e.target.value as SizeUnit })} aria-label="Единица объёма или веса">
+                    {SIZE_UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
+                  </select>
+                </div>
+              </div>
+              <label className="field">
+                <span>Процент (жирность, крепость)</span>
+                <input value={form.percent} onChange={(e) => set({ percent: e.target.value })} inputMode="decimal" placeholder="2,5" />
+              </label>
+              <div className="field">
+                <span>Количество в упаковке</span>
+                <div className="input-group">
+                  <input value={form.packQty} onChange={(e) => set({ packQty: e.target.value })} inputMode="numeric" placeholder="25" />
+                  <select value={form.packUnit} onChange={(e) => set({ packUnit: e.target.value as PackUnit })} aria-label="Чего в упаковке">
+                    {PACK_UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
+                  </select>
+                </div>
+              </div>
+              <label className="field">
+                <span>Упаковка</span>
+                <input value={form.packageName} onChange={(e) => set({ packageName: e.target.value })} list="product-packages" placeholder="ж/б, ст/б, ПЭТ" maxLength={20} />
+                <datalist id="product-packages">{PACKAGES.map((p) => <option key={p} value={p} />)}</datalist>
+              </label>
+              <p className="hint wide">На чеке и в поиске: <b>{fullName || '—'}</b></p>
               <label className="field">
                 <span>Единица измерения <b>*</b></span>
                 <select value={form.unit} onChange={(e) => set({ unit: e.target.value as Unit })}>
@@ -289,7 +343,7 @@ export function ProductCard() {
               </label>
               <label className="field">
                 <span>Короткое название для кассы</span>
-                <input value={form.quickName} onChange={(e) => set({ quickName: e.target.value })} disabled={!form.quickGroup} placeholder={form.name} />
+                <input value={form.quickName} onChange={(e) => set({ quickName: e.target.value })} disabled={!form.quickGroup} placeholder={fullName} />
               </label>
             </div>
 
@@ -310,7 +364,7 @@ export function ProductCard() {
       )}
 
       {confirmDelete && (
-        <Confirm title={`Удалить: ${form.name}`} text="Товар исчезнет из списка и с кассы. История продаж и движения сохранится."
+        <Confirm title={`Удалить: ${fullName}`} text="Товар исчезнет из списка и с кассы. История продаж и движения сохранится."
           confirmLabel="Удалить" danger busy={busy} onConfirm={remove} onClose={() => setConfirmDelete(false)} />
       )}
       {catModal && (

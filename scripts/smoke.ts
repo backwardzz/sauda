@@ -125,6 +125,25 @@ async function main() {
     b.from('products').insert({ org_id: orgA, name: 'Чужой', barcode: '1' }), 'row-level security');
   check('чужая организация не видит товары', (await must(b.from('products').select('id'))).length === 0);
 
+  console.log('Объём, процент и упаковка товара');
+  check('название раскладывается по колонкам', cola.title === 'Кола' && Number(cola.size_value) === 1 && cola.size_unit === 'л', cola);
+  const beer = await must(a.from('products')
+    .insert({ org_id: orgA, name: 'Пиво  Жигули 1968 светлое 4,5%  0.45л ж/б', barcode: '4870000000035', sale_price: 500 }).select().single());
+  check('пиво: объём, крепость и упаковка отдельно, год в названии остаётся',
+    beer.title === 'Пиво Жигули 1968 светлое' && Number(beer.size_value) === 0.45 && beer.size_unit === 'л'
+      && Number(beer.percent) === 4.5 && beer.package === 'ж/б' && beer.name === 'Пиво Жигули 1968 светлое 4,5% 0,45 л ж/б', beer);
+  const tea = await must(a.from('products').insert({ org_id: orgA, name: 'Чай Индира 25 пакетиков', barcode: '4870000000042' }).select().single());
+  check('количество в упаковке', tea.title === 'Чай Индира' && Number(tea.pack_qty) === 25 && tea.pack_unit === 'пак', tea);
+  const edited = await must(a.from('products').update({ size_value: 0.5 }).eq('id', beer.id).select().single());
+  check('правка колонки пересобирает полное название', edited.name === 'Пиво Жигули 1968 светлое 4,5% 0,5 л ж/б', edited.name);
+  const renamed = await must(a.from('products').update({ name: 'Пиво Efes 1,5 л ПЭТ' }).eq('id', beer.id).select().single());
+  check('новое полное название раскладывается заново',
+    renamed.title === 'Пиво Efes' && Number(renamed.size_value) === 1.5 && renamed.percent === null && renamed.package === 'ПЭТ', renamed);
+  const bare = await must(a.from('products').insert({ org_id: orgA, name: '0,5 л', barcode: '4870000000059' }).select().single());
+  check('название из одного объёма не теряется', bare.title === '0,5 л' && bare.size_value === null && bare.name === '0,5 л', bare);
+  await fails('объём без единицы не сохраняется', a.from('products').update({ size_unit: null }).eq('id', beer.id), 'products_size_pair');
+  await must(a.from('products').delete().in('id', [beer.id, tea.id, bare.id]));
+
   console.log('Склад');
   await must(a.rpc('post_stock_doc', {
     p_store: store, p_kind: 'posting', p_comment: 'Начальные остатки',

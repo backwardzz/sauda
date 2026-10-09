@@ -310,11 +310,29 @@ export interface QuickGroup {
   sort: number;
 }
 
+export type SizeUnit = 'мл' | 'л' | 'г' | 'кг';
+export const SIZE_UNITS: SizeUnit[] = ['мл', 'л', 'г', 'кг'];
+export type PackUnit = 'шт' | 'пак' | 'таб' | 'капс';
+export const PACK_UNITS: PackUnit[] = ['шт', 'пак', 'таб', 'капс'];
+export const PACKAGES = ['ж/б', 'ст/б', 'ПЭТ', 'м/у', 'т/п'];
+
 export interface Product {
   id: string;
   org_id: string;
   kind: 'product' | 'service';
+  /** Полное название: собирается базой из title и колонок ниже; его печатает чек и находит поиск. */
   name: string;
+  /** Название без объёма, процента и упаковки. */
+  title: string;
+  size_value: number | null;
+  size_unit: SizeUnit | null;
+  /** Жирность или крепость. */
+  percent: number | null;
+  /** Сколько штук, пакетиков или таблеток в упаковке. */
+  pack_qty: number | null;
+  pack_unit: PackUnit | null;
+  /** Тип упаковки: ж/б, ст/б, ПЭТ… */
+  package: string | null;
   unit: Unit;
   barcode: string;
   extra_barcodes: string[];

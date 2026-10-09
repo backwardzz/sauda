@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { dateOnly, marginPct, markupPct, money, parseNum } from '../lib/format';
 import { useChanged, useDebounced, useQuery, useStored } from '../lib/hooks';
+import { packText, percentText, sizeText } from '../lib/productAttrs';
 import { categoryTree, useCategories, useContractors, useQuickGroups } from '../lib/refs';
 import { useWorkspace } from '../lib/session';
 import { db, q, safeTerm } from '../lib/supabase';
@@ -24,7 +25,7 @@ interface Filters {
 
 const NO_FILTERS: Filters = { supplier: '', kind: '', unit: '', priceFrom: '', priceTo: '' };
 const SORT_COLUMN: Record<string, string> = {
-  name: 'name', barcode: 'barcode', sku: 'sku', purchase: 'purchase_price', sale: 'sale_price', updated: 'updated_at',
+  name: 'title', size: 'size_value', percent: 'percent', barcode: 'barcode', sku: 'sku', purchase: 'purchase_price', sale: 'sale_price', updated: 'updated_at',
 };
 
 type Bulk = 'category' | 'supplier' | 'quick' | 'delete';
@@ -70,7 +71,8 @@ export function Products() {
   /** Фильтры списка: общие для страницы таблицы и для полной выгрузки. */
   const scoped = () => {
     let query = db.from('products').select('*', { count: 'exact' }).eq('org_id', org.id).eq('archived', false);
-    const s = safeTerm(term);
+    // в названиях дробь пишется с запятой: «0.5» в поиске находит «0,5 л»
+    const s = safeTerm(term).replace(/(d).(d)/g, '$1,$2');
     if (s) {
       // доп. код ищется только целиком: пустой набор в cs.{} совпал бы со всеми товарами
       const code = /^[\w-]+$/.test(s) ? `,extra_barcodes.cs.{${s}}` : '';
@@ -103,11 +105,15 @@ export function Products() {
       key: 'name', title: 'Название товара', sortable: true, fixed: true,
       render: (p) => (
         <Link to={`/products/${p.id}`} onClick={(e) => e.stopPropagation()}>
-          {p.name}
+          {p.title}
           {p.kind === 'service' && <span className="badge" style={{ marginLeft: 8 }}>услуга</span>}
         </Link>
       ),
     },
+    { key: 'size', title: 'Объём / вес', sortable: true, align: 'right', value: sizeText },
+    { key: 'percent', title: '%', sortable: true, align: 'right', value: percentText },
+    { key: 'pack', title: 'В упаковке', align: 'right', value: packText },
+    { key: 'package', title: 'Упаковка', value: (p) => p.package ?? '' },
     { key: 'barcode', title: 'Штрихкод', sortable: true, render: (p) => <span className="num">{p.barcode}</span> },
     { key: 'sku', title: 'Артикул', sortable: true, value: (p) => p.sku },
     { key: 'extra', title: 'Доп. код', optional: true, value: (p) => p.extra_barcodes.join('; ') },
@@ -141,7 +147,9 @@ export function Products() {
       }
       if (!rows.length) return toast.error('Нет товаров для выгрузки');
       await exportXlsx(`Товары ${org.name}`, 'Товары', rows.map((p) => ({
-        'Название': p.name, 'Штрихкод': p.barcode, 'Доп. код': p.extra_barcodes.join('; '), 'Артикул': p.sku,
+        // полное название: файл можно загрузить обратно, и база снова разложит его по колонкам
+        'Название': p.name, 'Объём / вес': sizeText(p), 'Процент': percentText(p), 'В упаковке': packText(p),
+        'Упаковка': p.package ?? '', 'Штрихкод': p.barcode, 'Доп. код': p.extra_barcodes.join('; '), 'Артикул': p.sku,
         'Ед. изм': p.unit, 'Закупочная цена': p.purchase_price, 'Продажная цена': p.sale_price,
         'Оптовая цена': p.wholesale_price, 'Категория': catName(p.category_id), 'Поставщик': supName(p.supplier_id),
       })));
