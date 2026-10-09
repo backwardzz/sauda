@@ -1,8 +1,10 @@
 import { lazy, Suspense, type ComponentType } from 'react';
-import { Navigate, Route, Routes } from 'react-router-dom';
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { configured } from './lib/supabase';
 import { useSession } from './lib/session';
 import { AuthPage } from './pages/Auth';
+import { Privacy, Terms } from './pages/Legal';
+import { NewPassword } from './pages/NewPassword';
 import { Onboarding } from './pages/Onboarding';
 import { Layout } from './pages/Layout';
 
@@ -73,7 +75,12 @@ const Profile = page(() => import('./pages/profile/Profile'), 'Profile');
 const pageLoading = <div className="auth muted">Загрузка…</div>;
 
 export function App() {
-  const { user, loading, org, company, store, canManage } = useSession();
+  const { user, loading, org, company, store, canManage, recovering } = useSession();
+  const { pathname } = useLocation();
+
+  // оферта и политика открываются и без входа: на них ведут ссылки из формы регистрации
+  if (pathname === '/terms') return <Terms />;
+  if (pathname === '/privacy') return <Privacy />;
 
   if (!configured) {
     return (
@@ -89,6 +96,7 @@ export function App() {
   }
   if (loading) return <div className="auth muted">Загрузка…</div>;
   if (!user) return <AuthPage />;
+  if (recovering) return <NewPassword />;
   if (!org) return <Onboarding />;
 
   // Компания (производитель, дистрибьютор): каталог, склад и заказы магазинов, без кассы.
