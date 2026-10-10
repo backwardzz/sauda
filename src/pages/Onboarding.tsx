@@ -1,7 +1,9 @@
 import { useState, type FormEvent } from 'react';
+import { Link } from 'react-router-dom';
 import { formatPhone } from '../lib/format';
 import { db, errorText, q } from '../lib/supabase';
 import { useSession } from '../lib/session';
+import { TERMS_VERSION } from './Auth';
 import { COMPANY_TYPE, type CompanyType, type OrgKind } from '../lib/types';
 import { CitySelect } from '../ui/CitySelect';
 import { PhoneInput } from '../ui/PhoneInput';
@@ -9,10 +11,18 @@ import { PhoneInput } from '../ui/PhoneInput';
 /** Первый вход: у пользователя ещё нет магазина или компании и нет приглашений. */
 export function Onboarding() {
   const { user, reload, signOut } = useSession();
-  const meta = (user?.user_metadata ?? {}) as { account_kind?: string; city_id?: number; phone?: string; full_name?: string; org_name?: string };
+  const meta = (user?.user_metadata ?? {}) as {
+    account_kind?: string; city_id?: number; phone?: string; full_name?: string; name?: string; org_name?: string;
+    business?: string; terms_version?: string;
+  };
+  // сотрудник, для которого не нашлось приглашения: подсказка вверху, но свой магазин завести тоже можно
+  const lostEmployee = meta.account_kind === 'employee';
+  // вход через Google проходит без формы регистрации: согласие спрашивается здесь
+  const needTerms = meta.terms_version !== TERMS_VERSION;
+  const [agree, setAgree] = useState(false);
   // роль, название, город и телефон указаны при регистрации; здесь их ещё можно поменять
   const [kind, setKind] = useState<OrgKind>(meta.account_kind === 'company' || meta.account_kind === 'supplier' ? 'company' : 'store');
-  const [business, setBusiness] = useState<'grocery' | 'pharmacy'>('grocery');
+  const [business, setBusiness] = useState<'grocery' | 'pharmacy'>(meta.business === 'pharmacy' ? 'pharmacy' : 'grocery');
   const [companyType, setCompanyType] = useState<CompanyType>('distributor');
   const [fresh, setFresh] = useState(true);
   const [name, setName] = useState(meta.org_name ?? '');
@@ -31,13 +41,18 @@ export function Onboarding() {
     e.preventDefault();
     setError(null);
     if (city == null) return setError('Выберите город');
+    if (needTerms && !agree) return setError('Отметьте согласие с офертой и политикой конфиденциальности');
     if (bin.trim() && !/^\d{12}$/.test(bin.replace(/\s/g, ''))) return setError('БИН или ИИН — это 12 цифр');
     setBusy(true);
     try {
+      if (needTerms) {
+        const { error } = await db.auth.updateUser({ data: { terms_version: TERMS_VERSION, terms_accepted_at: new Date().toISOString() } });
+        if (error) throw error;
+      }
       await q(db.rpc('create_org', {
         p_name: name, p_store: storeName || name, p_kind: kind, p_business: business, p_city: city,
         p_profile: {
-          phone: formatPhone(phone), address, bin: bin.replace(/\s/g, ''), email: user?.email ?? '', contact_name: meta.full_name ?? '',
+          phone: formatPhone(phone), address, bin: bin.replace(/\s/g, ''), email: user?.email ?? '', contact_name: meta.full_name ?? meta.name ?? '',
           ...(isStore ? {} : { company_type: companyType, description }),
         },
       }));
@@ -59,6 +74,13 @@ export function Onboarding() {
             Если вас пригласили в существующий магазин или компанию, войдите с той почтой, на которую пришло приглашение.
           </p>
         </div>
+        {lostEmployee && (
+          <div className="card pad warn-box stack">
+            <b>Приглашение для {user?.email} не найдено</b>
+            <span>Попросите владельца пригласить именно этот адрес в разделе «Сотрудники», затем нажмите «Проверить снова». Или заведите свой магазин ниже.</span>
+            <button type="button" className="btn" onClick={() => void reload()}>Проверить снова</button>
+          </div>
+        )}
         <div className="choice">
           <button type="button" className={isStore ? 'active' : ''} onClick={() => setKind('store')}>
             <b>Магазин</b>
@@ -143,6 +165,15 @@ export function Onboarding() {
           <p className="hint">
             В этом городе появится главный филиал компании. Остальные филиалы, логотип и условия доставки добавите в профиле.
           </p>
+        )}
+        {needTerms && (
+          <label className="check-row">
+            <input type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} />
+            <span>
+              Принимаю <Link to="/terms" target="_blank">условия оферты</Link> и{' '}
+              <Link to="/privacy" target="_blank">политику конфиденциальности</Link>, согласен на обработку персональных данных
+            </span>
+          </label>
         )}
         {error && <p className="error-text">{error}</p>}
         <button className="btn primary large" disabled={busy}>Продолжить</button>
