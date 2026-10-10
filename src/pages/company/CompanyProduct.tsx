@@ -29,7 +29,7 @@ const DAYS = 30;
 export function CompanyProduct() {
   const { id = '' } = useParams();
   const navigate = useNavigate();
-  const { org, canManage, branches } = useCompany();
+  const { org, canManage, canEditCatalog, branches } = useCompany();
   const [mode, setMode] = useState<'edit' | 'copy' | 'remove' | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -119,7 +119,7 @@ export function CompanyProduct() {
         {product.category && <span className="badge">{product.category}</span>}
         <span className={`badge ${STOCK_BADGE[sum.state].badge}`}>{STOCK_BADGE[sum.state].label}</span>
         <span className="spacer" />
-        {canManage && (
+        {canEditCatalog && (
           <>
             <button className="btn primary" onClick={() => setMode('edit')}><Icon name="edit" size={16} />Редактировать</button>
             <button className="btn" onClick={() => setMode('copy')} title="Новый товар с теми же видами и ценами"><Icon name="copy" size={16} />Дублировать</button>
@@ -172,7 +172,7 @@ export function CompanyProduct() {
                   <td className="num">{v.barcode}</td>
                   <td className="right">{Number(v.pack_qty) !== 1 ? `по ${fmtQty(v.pack_qty)} ${v.unit}` : v.unit}</td>
                   <td className="right">
-                    {canManage ? <NumCell value={Number(v.price)} onSave={(n) => patch(v, { price: n })} aria-label={`Цена: ${fullName(product.name, v.label)}`} /> : money(v.price)}
+                    {canEditCatalog ? <NumCell value={Number(v.price)} onSave={(n) => patch(v, { price: n })} aria-label={`Цена: ${fullName(product.name, v.label)}`} /> : money(v.price)}
                   </td>
                   {branches.map((b) => (
                     <td key={b.id} className="right">
@@ -186,7 +186,7 @@ export function CompanyProduct() {
                   <td className="right">{fmtQty(s?.sold_qty)}</td>
                   <td className="right">{money(s?.sold_sum)}</td>
                   <td className="center">
-                    <input type="checkbox" checked={v.active} disabled={!canManage} aria-label={`В продаже: ${fullName(product.name, v.label)}`}
+                    <input type="checkbox" checked={v.active} disabled={!canEditCatalog} aria-label={`В продаже: ${fullName(product.name, v.label)}`}
                       onChange={(e) => patch(v, { active: e.target.checked }, e.target.checked ? 'Вид снова в продаже' : 'Вид снят с продажи: магазины его не видят').catch(toast.error)} />
                   </td>
                 </tr>

@@ -90,7 +90,7 @@ const CASHIER_NAV: Section[] = [
 ];
 
 export function Layout() {
-  const { user, org, role, canManage, memberships, stores, store, setStoreId, setOrgId, signOut } = useSession();
+  const { user, org, role, canManage, branchId, memberships, stores, store, setStoreId, setOrgId, signOut } = useSession();
   const [open, setOpen] = useState<string | null>(null);
   const bar = useRef<HTMLElement>(null);
   const location = useLocation();
@@ -108,7 +108,10 @@ export function Layout() {
   }, []);
 
   const isCompany = org?.kind === 'company';
-  const nav = isCompany ? COMPANY_NAV : canManage ? MANAGER_NAV : CASHIER_NAV;
+  // сотрудник филиала: без «Доступа к ценам» (его открывает головной офис)
+  const nav = isCompany
+    ? (branchId ? COMPANY_NAV.filter((s) => s.to !== '/price-access').map((s) => (s.to === '/profile' ? { ...s, label: 'Мой филиал' } : s)) : COMPANY_NAV)
+    : canManage ? MANAGER_NAV : CASHIER_NAV;
   const name = (user?.user_metadata?.full_name as string) || user?.email || '';
   // «Каталог» компании подсвечен и на карточке товара
   const exact = (to: string) => to === '/';

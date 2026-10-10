@@ -6,7 +6,38 @@ export type Database = {
   
   "public": {
           Tables: {
-            "canceled_items": {
+            "branch_requests": {
+                  Row: {
+                    "address": string,"branch_id": string | null,"city_id": number | null,"comment": string,"created_at": string,"decided_at": string | null,"decided_by": string | null,"id": string,"name": string,"org_id": string,"phone": string,"status": string,"user_id": string
+                  }
+                  Insert: {
+                    "address"?: string,"branch_id"?: string | null,"city_id"?: number | null,"comment"?: string,"created_at"?: string,"decided_at"?: string | null,"decided_by"?: string | null,"id"?: string,"name"?: string,"org_id": string,"phone"?: string,"status"?: string,"user_id": string
+                  }
+                  Update: {
+                    "address"?: string,"branch_id"?: string | null,"city_id"?: number | null,"comment"?: string,"created_at"?: string,"decided_at"?: string | null,"decided_by"?: string | null,"id"?: string,"name"?: string,"org_id"?: string,"phone"?: string,"status"?: string,"user_id"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "branch_requests_branch_id_fkey"
+      columns: ["branch_id"]
+isOneToOne: false
+      referencedRelation: "company_branches"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "branch_requests_city_id_fkey"
+      columns: ["city_id"]
+isOneToOne: false
+      referencedRelation: "cities"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "branch_requests_org_id_fkey"
+      columns: ["org_id"]
+isOneToOne: false
+      referencedRelation: "orgs"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"canceled_items": {
                   Row: {
                     "cashier_id": string | null,"created_at": string,"id": string,"name": string,"org_id": string,"product_id": string | null,"qty_from": number,"qty_to": number,"register_id": string,"store_id": string
                   }
@@ -507,16 +538,22 @@ isOneToOne: false
                   ]
                 },"invites": {
                   Row: {
-                    "created_at": string,"email": string,"id": string,"org_id": string,"role": Database["public"]['Enums']["member_role"]
+                    "branch_id": string | null,"created_at": string,"email": string,"id": string,"org_id": string,"role": Database["public"]['Enums']["member_role"]
                   }
                   Insert: {
-                    "created_at"?: string,"email": string,"id"?: string,"org_id": string,"role"?: Database["public"]['Enums']["member_role"]
+                    "branch_id"?: string | null,"created_at"?: string,"email": string,"id"?: string,"org_id": string,"role"?: Database["public"]['Enums']["member_role"]
                   }
                   Update: {
-                    "created_at"?: string,"email"?: string,"id"?: string,"org_id"?: string,"role"?: Database["public"]['Enums']["member_role"]
+                    "branch_id"?: string | null,"created_at"?: string,"email"?: string,"id"?: string,"org_id"?: string,"role"?: Database["public"]['Enums']["member_role"]
                   }
                   Relationships: [
                     {
+      foreignKeyName: "invites_branch_id_fkey"
+      columns: ["branch_id"]
+isOneToOne: false
+      referencedRelation: "company_branches"
+      referencedColumns: ["id"]
+    },{
       foreignKeyName: "invites_org_id_fkey"
       columns: ["org_id"]
 isOneToOne: false
@@ -625,16 +662,22 @@ isOneToOne: false
                   ]
                 },"org_members": {
                   Row: {
-                    "created_at": string,"org_id": string,"role": Database["public"]['Enums']["member_role"],"user_id": string
+                    "branch_id": string | null,"created_at": string,"org_id": string,"role": Database["public"]['Enums']["member_role"],"user_id": string
                   }
                   Insert: {
-                    "created_at"?: string,"org_id": string,"role"?: Database["public"]['Enums']["member_role"],"user_id": string
+                    "branch_id"?: string | null,"created_at"?: string,"org_id": string,"role"?: Database["public"]['Enums']["member_role"],"user_id": string
                   }
                   Update: {
-                    "created_at"?: string,"org_id"?: string,"role"?: Database["public"]['Enums']["member_role"],"user_id"?: string
+                    "branch_id"?: string | null,"created_at"?: string,"org_id"?: string,"role"?: Database["public"]['Enums']["member_role"],"user_id"?: string
                   }
                   Relationships: [
                     {
+      foreignKeyName: "org_members_branch_id_fkey"
+      columns: ["branch_id"]
+isOneToOne: false
+      referencedRelation: "company_branches"
+      referencedColumns: ["id"]
+    },{
       foreignKeyName: "org_members_org_id_fkey"
       columns: ["org_id"]
 isOneToOne: false
@@ -1171,6 +1214,14 @@ isOneToOne: false
 "archive_company_product":
 { Args: { "p_archived"?: boolean | null,"p_product": string | null}; Returns: undefined
                            },
+"branch_requests_list":
+{ Args: { "p_company": string | null}; Returns: {
+              "address": string,"branch_id": string,"branch_name": string,"city": string,"comment": string,"created_at": string,"id": string,"name": string,"phone": string,"status": string,"user_email": string,"user_name": string
+            }[]
+                           },
+"cancel_branch_request":
+{ Args: { "p_request": string | null}; Returns: undefined
+                           },
 "cash_op":
 { Args: { "p_amount": number | null,"p_comment"?: string | null,"p_kind": string | null,"p_shift": string | null}; Returns: string
                            },
@@ -1219,6 +1270,9 @@ isOneToOne: false
                            },
 "create_stock_doc":
 { Args: { "p_comment"?: string | null,"p_kind": string | null,"p_store": string | null,"p_supplier"?: string | null,"p_to_store"?: string | null}; Returns: string
+                           },
+"decide_branch_request":
+{ Args: { "p_approve": boolean | null,"p_branch"?: string | null,"p_request": string | null}; Returns: undefined
                            },
 "decide_price_access":
 { Args: { "p_company": string | null,"p_status": string | null,"p_store_org": string | null}; Returns: undefined
@@ -1292,6 +1346,9 @@ isOneToOne: false
 { Args: { "p_from": string | null,"p_org": string | null,"p_store"?: string | null,"p_to": string | null}; Returns: {
               "cash_in": number,"cash_out": number,"cashier_name": string,"closed_at": string,"closing_cash": number,"cost": number,"expected_cash": number,"id": string,"number": number,"opened_at": string,"opening_cash": number,"profit": number,"receipts": number,"register_name": string,"returns_card": number,"returns_cash": number,"sales_card": number,"sales_cash": number
             }[]
+                           },
+"request_branch":
+{ Args: { "p_address"?: string | null,"p_branch"?: string | null,"p_city"?: number | null,"p_comment"?: string | null,"p_company": string | null,"p_name"?: string | null,"p_phone"?: string | null}; Returns: string
                            },
 "request_price_access":
 { Args: { "p_company": string | null,"p_store_org": string | null}; Returns: string

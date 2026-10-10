@@ -733,6 +733,95 @@ async function main() {
   await must(s.rpc('set_branch_zones', { p_branch: astanaBranch, p_regions: [], p_cities: [] }));
   await must(b.from('stores').delete().in('id', [storeK, storeT]));
 
+  console.log('Кабинеты филиалов');
+  const { db: br } = await signUp('branch');
+  await fails('заявка без названия и города нового филиала', br.rpc('request_branch', { p_company: supOrg }), 'название и город');
+  await fails('заявка в филиал другой компании', br.rpc('request_branch', { p_company: rivalOrg, p_branch: astanaBranch }), 'Филиал не найден');
+  const req = await must(br.rpc('request_branch', { p_company: supOrg, p_branch: astanaBranch, p_comment: 'Работаю на складе в Астане' })) as string;
+  check('повторная заявка обновляет прежнюю', (await must(br.rpc('request_branch', { p_company: supOrg, p_branch: astanaBranch }))) === req);
+  check('до одобрения заявитель не видит данные компании',
+    (await must(br.from('orders').select('id'))).length === 0 && (await must(br.from('company_stock').select('variant_id'))).length === 0);
+  await fails('заявитель не одобряет себя сам', br.rpc('decide_branch_request', { p_request: req, p_approve: true }), 'Нет доступа');
+  await fails('чужая компания не видит заявки', rival.rpc('branch_requests_list', { p_company: supOrg }), 'Нет доступа');
+  const reqList = await must(s.rpc('branch_requests_list', { p_company: supOrg }));
+  check('владелец видит заявку: кто и в какой филиал',
+    reqList[0]?.user_name === 'branch' && reqList[0].branch_name === 'Филиал в Астане' && reqList[0].status === 'pending', reqList[0]);
+  await must(s.rpc('decide_branch_request', { p_request: req, p_approve: true }));
+  await fails('по заявке решают один раз', s.rpc('decide_branch_request', { p_request: req, p_approve: false }), 'уже принято');
+  const brMember = (await must(br.from('org_members').select('role, branch_id').eq('org_id', supOrg)))[0];
+  check('заявитель стал руководителем своего филиала', brMember?.role === 'manager' && brMember.branch_id === astanaBranch, brMember);
+
+  const allOrders = await must(s.from('orders').select('id, branch_id').eq('supplier_org', supOrg));
+  const brOrders = await must(br.from('orders').select('id, branch_id').eq('supplier_org', supOrg));
+  check('филиал видит только заказы своего филиала, головной офис — все',
+    brOrders.length > 0 && brOrders.length < allOrders.length && brOrders.every((o: Row) => o.branch_id === astanaBranch),
+    [brOrders.length, allOrders.length]);
+  const mainOrder = allOrders.find((o: Row) => o.branch_id === mainBranch.id).id as string;
+  check('строки чужих заказов филиалу не видны', (await must(br.from('order_items').select('id').eq('order_id', mainOrder))).length === 0);
+  const brStock = await must(br.from('company_stock').select('branch_id'));
+  check('остатки — только своего филиала', brStock.length > 0 && brStock.every((r: Row) => r.branch_id === astanaBranch), brStock.length);
+  check('история остатков — только своего филиала',
+    (await must(br.from('company_stock_moves').select('branch_id'))).every((r: Row) => r.branch_id === astanaBranch));
+  await must(br.rpc('set_company_stock', { p_variant: lemonId, p_branch: astanaBranch, p_qty: 40, p_comment: 'Пересчёт' }));
+  await fails('чужой остаток филиал не меняет', br.rpc('set_company_stock', { p_variant: lemonId, p_branch: mainBranch.id, p_qty: 1 }), 'чужой филиал');
+  await must(br.rpc('set_branch_price', { p_variant: lemonId, p_branch: astanaBranch, p_price: 270 }));
+  check('филиал ставит свою цену', Number((await offerFor(b, storeB))?.price) === 270);
+  await must(br.rpc('set_branch_price', { p_variant: lemonId, p_branch: astanaBranch, p_price: null }));
+  await fails('чужую цену филиал не меняет', br.rpc('set_branch_price', { p_variant: lemonId, p_branch: mainBranch.id, p_price: 1 }), 'чужой филиал');
+  await fails('чужой ассортимент филиал не меняет', br.rpc('set_branch_listed', { p_variant: lemonId, p_branch: mainBranch.id, p_listed: false }), 'чужой филиал');
+  await fails('чужие остатки из файла не загружаются',
+    br.rpc('import_company_stock', { p_org: supOrg, p_rows: [{ barcode: '4870000009993', branch_id: mainBranch.id, qty: 5 }] }), 'чужой филиал');
+  await fails('общий каталог филиал не меняет', br.rpc('archive_company_product', { p_product: kvas, p_archived: true }), 'головной офис');
+  check('и напрямую цену в каталоге не меняет', (await must(br.from('company_variants').update({ price: 1 }).eq('id', lemonId).select())).length === 0);
+  await fails('доступ к ценам открывает только головной офис',
+    br.rpc('decide_price_access', { p_company: supOrg, p_store_org: orgB, p_status: 'approved' }), 'головной офис');
+  await fails('заказ в другой филиал передаёт только головной офис', br.rpc('set_order_branch', { p_order: branchOrder, p_branch: mainBranch.id }), 'головной офис');
+  await fails('чужой заказ филиал не ведёт', br.rpc('set_order_status', { p_order: mainOrder, p_status: 'canceled' }), 'Нет доступа');
+  await must(br.rpc('set_order_status', { p_order: branchOrder, p_status: 'confirmed' }));
+  check('свой заказ филиал подтверждает', (await must(b.from('orders').select('status').eq('id', branchOrder).single())).status === 'confirmed');
+
+  check('в сотрудниках филиал видит только своих', (await must(br.from('org_members').select('user_id').eq('org_id', supOrg))).length === 1);
+  await must(br.from('company_branches').update({ phone: '+7 717 222 33 44' }).eq('id', astanaBranch));
+  check('руководитель правит карточку своего филиала',
+    (await must(a.from('company_branches').select('phone').eq('id', astanaBranch).single())).phone === '+7 717 222 33 44');
+  check('чужой филиал не правит', (await must(br.from('company_branches').update({ phone: '1' }).eq('id', mainBranch.id).select())).length === 0);
+  await fails('город филиала меняет только владелец', br.from('company_branches').update({ city_id: almaty }).eq('id', astanaBranch), 'владелец компании');
+  const { db: staff, email: staffEmail } = await signUp('branch-staff');
+  await fails('приглашение в головной офис от филиала не проходит',
+    br.from('invites').insert({ org_id: supOrg, email: staffEmail, role: 'cashier' }), 'row-level security');
+  await fails('приглашение в чужой филиал не проходит',
+    br.from('invites').insert({ org_id: supOrg, email: staffEmail, role: 'cashier', branch_id: mainBranch.id }), 'row-level security');
+  await fails('филиал не назначает владельцев',
+    br.from('invites').insert({ org_id: supOrg, email: staffEmail, role: 'owner', branch_id: astanaBranch }), 'row-level security');
+  await must(br.from('invites').insert({ org_id: supOrg, email: staffEmail, role: 'cashier', branch_id: astanaBranch }));
+  eq('сотрудник филиала принял приглашение', await must(staff.rpc('accept_invites')), 1);
+  const staffOrders = await must(staff.from('orders').select('branch_id').eq('supplier_org', supOrg));
+  check('сотрудник филиала видит заказы своего филиала',
+    staffOrders.length === brOrders.length && staffOrders.every((o: Row) => o.branch_id === astanaBranch));
+  const staffId = (await staff.auth.getUser()).data.user!.id;
+  await fails('руководитель не переводит сотрудника в головной офис',
+    br.from('org_members').update({ branch_id: null }).eq('org_id', supOrg).eq('user_id', staffId), 'row-level security');
+  check('руководитель убирает сотрудника своего филиала',
+    (await must(br.from('org_members').delete().eq('org_id', supOrg).eq('user_id', staffId).select())).length === 1);
+
+  const { db: br2 } = await signUp('branch-new');
+  const shymkent = cities.find((c: Row) => c.name === 'Шымкент').id as number;
+  const req2 = await must(br2.rpc('request_branch', {
+    p_company: supOrg, p_name: 'Склад в Шымкенте', p_city: shymkent, p_address: 'ул. Складская, 1', p_phone: '+7 725 000 11 22',
+  })) as string;
+  await must(s.rpc('decide_branch_request', { p_request: req2, p_approve: true }));
+  const newBranch = (await must(s.from('company_branches').select('id, city_id, address').eq('org_id', supOrg).eq('name', 'Склад в Шымкенте')))[0];
+  check('по заявке создан новый филиал с городом и адресом', newBranch?.city_id === shymkent && newBranch.address === 'ул. Складская, 1', newBranch);
+  check('и заявитель привязан к нему', (await must(br2.from('org_members').select('branch_id').eq('org_id', supOrg)))[0]?.branch_id === newBranch.id);
+  const { db: br3 } = await signUp('branch-declined');
+  const req3 = await must(br3.rpc('request_branch', { p_company: supOrg, p_branch: astanaBranch })) as string;
+  await must(s.rpc('decide_branch_request', { p_request: req3, p_approve: false }));
+  check('отклонённый заявитель не сотрудник, статус виден ему',
+    (await must(br3.from('org_members').select('org_id'))).length === 0
+      && (await must(br3.from('branch_requests').select('status').eq('id', req3).single())).status === 'declined');
+  await must(s.rpc('delete_company_branch', { p_branch: newBranch.id }));
+  check('удаление филиала убирает и его сотрудников', (await must(br2.from('org_members').select('org_id'))).length === 0);
+
   console.log('Аналитика компании по городам');
   const geoFrom = new Date(Date.now() - 86400_000).toISOString();
   const geoTo = new Date(Date.now() + 86400_000).toISOString();

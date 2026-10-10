@@ -22,7 +22,7 @@ const FILTERS: [Filter, string][] = [
 
 /** Каталог компании: товары по категориям, внутри товара — его виды. */
 export function CompanyCatalog() {
-  const { org, canManage, branches } = useCompany();
+  const { org, canEditCatalog: canManage, branches } = useCompany();
   const navigate = useNavigate();
   const [search, setSearch] = useState('');
   /** null — все категории, '' — без категории */

@@ -1,9 +1,10 @@
 import { useState, type FormEvent } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { formatPhone } from '../lib/format';
 import { db, errorText, q } from '../lib/supabase';
 import { useSession } from '../lib/session';
 import { TERMS_VERSION } from './Auth';
+import { BranchJoin } from './BranchJoin';
 import { COMPANY_TYPE, type CompanyType, type OrgKind } from '../lib/types';
 import { CitySelect } from '../ui/CitySelect';
 import { PhoneInput } from '../ui/PhoneInput';
@@ -11,6 +12,7 @@ import { PhoneInput } from '../ui/PhoneInput';
 /** Первый вход: у пользователя ещё нет магазина или компании и нет приглашений. */
 export function Onboarding() {
   const { user, reload, signOut } = useSession();
+  const navigate = useNavigate();
   const meta = (user?.user_metadata ?? {}) as {
     account_kind?: string; city_id?: number; phone?: string; full_name?: string; name?: string; org_name?: string;
     business?: string; terms_version?: string;
@@ -20,6 +22,8 @@ export function Onboarding() {
   // вход через Google проходит без формы регистрации: согласие спрашивается здесь
   const needTerms = meta.terms_version !== TERMS_VERSION;
   const [agree, setAgree] = useState(false);
+  // филиал компании не заводит свою организацию, а отправляет заявку владельцу
+  const [asBranch, setAsBranch] = useState(meta.account_kind === 'branch');
   // роль, название, город и телефон указаны при регистрации; здесь их ещё можно поменять
   const [kind, setKind] = useState<OrgKind>(meta.account_kind === 'company' || meta.account_kind === 'supplier' ? 'company' : 'store');
   const [business, setBusiness] = useState<'grocery' | 'pharmacy'>(meta.business === 'pharmacy' ? 'pharmacy' : 'grocery');
@@ -45,10 +49,7 @@ export function Onboarding() {
     if (bin.trim() && !/^\d{12}$/.test(bin.replace(/\s/g, ''))) return setError('БИН или ИИН — это 12 цифр');
     setBusy(true);
     try {
-      if (needTerms) {
-        const { error } = await db.auth.updateUser({ data: { terms_version: TERMS_VERSION, terms_accepted_at: new Date().toISOString() } });
-        if (error) throw error;
-      }
+      await acceptTerms();
       await q(db.rpc('create_org', {
         p_name: name, p_store: storeName || name, p_kind: kind, p_business: business, p_city: city,
         p_profile: {
@@ -57,13 +58,32 @@ export function Onboarding() {
         },
       }));
       // новому магазину сразу предлагаются пакеты ходовых товаров с ценами компаний
-      if (isStore && business === 'grocery' && fresh) window.location.hash = '#/catalog/starter';
+      if (isStore && business === 'grocery' && fresh) navigate('/catalog/starter');
       await reload();
     } catch (err) {
       setError(errorText(err));
       setBusy(false);
     }
   };
+
+  const termsBox = needTerms && (
+    <label className="check-row">
+      <input type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} />
+      <span>
+        Принимаю <Link to="/terms" target="_blank">условия оферты</Link> и{' '}
+        <Link to="/privacy" target="_blank">политику конфиденциальности</Link>, согласен на обработку персональных данных
+      </span>
+    </label>
+  );
+  const acceptTerms = async () => {
+    if (!needTerms) return;
+    const { error } = await db.auth.updateUser({ data: { terms_version: TERMS_VERSION, terms_accepted_at: new Date().toISOString() } });
+    if (error) throw error;
+  };
+
+  if (asBranch) {
+    return <BranchJoin onBack={() => setAsBranch(false)} terms={{ ok: !needTerms || agree, accept: acceptTerms, box: termsBox }} />;
+  }
 
   return (
     <div className="auth">
@@ -166,17 +186,10 @@ export function Onboarding() {
             В этом городе появится главный филиал компании. Остальные филиалы, логотип и условия доставки добавите в профиле.
           </p>
         )}
-        {needTerms && (
-          <label className="check-row">
-            <input type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} />
-            <span>
-              Принимаю <Link to="/terms" target="_blank">условия оферты</Link> и{' '}
-              <Link to="/privacy" target="_blank">политику конфиденциальности</Link>, согласен на обработку персональных данных
-            </span>
-          </label>
-        )}
+        {termsBox}
         {error && <p className="error-text">{error}</p>}
         <button className="btn primary large" disabled={busy}>Продолжить</button>
+        <button type="button" className="btn" onClick={() => setAsBranch(true)}>Я из филиала или склада компании</button>
         <button type="button" className="btn ghost" onClick={signOut}>
           Выйти из {user?.email}
         </button>
