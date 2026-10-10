@@ -718,3 +718,7 @@ a.stat:hover { text-decoration: none; }
 /* демо-магазин без регистрации */
 .demo-banner { display: flex; align-items: center; gap: 12px; padding: 8px 16px; background: var(--warn-weak); color: var(--text); border-bottom: 1px solid var(--warn); font-size: 13.5px; }
 .demo-banner span { flex: 1; }
+
+/* вход и регистрация: карточка меняет размер, а содержимое стоит в конечной раскладке по центру и не перестраивается */
+.auth-card.morph { display: flex; justify-content: center; align-items: flex-start; }
+.auth-card.morph > .auth-inner { width: 100%; min-width: 0; gap: 8px; }

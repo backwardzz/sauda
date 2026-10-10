@@ -104,10 +104,19 @@ export function AuthPage() {
     const from = sizeBefore.current;
     sizeBefore.current = null;
     if (!el || !from || !el.animate || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    // быстрый второй щелчок: прежняя анимация ещё идёт и исказила бы замер конечного размера
+    for (const a of [...el.getAnimations(), ...(el.firstElementChild?.getAnimations() ?? [])]) a.cancel();
     const to = { w: el.offsetWidth, h: el.offsetHeight };
     if (from.w === to.w && from.h === to.h) return;
     const frame = (s: { w: number; h: number }) => ({ width: `${s.w}px`, height: `${s.h}px`, maxWidth: 'none', overflow: 'hidden' });
-    el.animate([frame(from), frame(to)], { duration: 380, easing: 'cubic-bezier(0.4, 0, 0.2, 1)' });
+    const timing = { duration: 380, easing: 'cubic-bezier(0.4, 0, 0.2, 1)' };
+    // Содержимое сразу стоит в конечной раскладке и не перестраивается, пока карточка меняет ширину: иначе текст
+    // каждый кадр переносится по-новому. Его ширина измеряется до старта анимации карточки — пока она конечная.
+    const inner = el.firstElementChild as HTMLElement | null;
+    const hold = inner ? { width: `${inner.offsetWidth}px`, flexShrink: 0 } : null;
+    el.animate([frame(from), frame(to)], timing);
+    // карточка открывает содержимое, как шторка, и оно проявляется
+    if (inner && hold) inner.animate([{ ...hold, opacity: 0 }, { ...hold, opacity: 1, offset: 0.6 }, { ...hold, opacity: 1 }], timing);
   });
   const go = (m: Mode) => morph(() => { setMode(m); setError(null); setNotice(null); });
   const employee = kind === 'employee';
@@ -270,21 +279,23 @@ export function AuthPage() {
   if (mode === 'reset') {
     return (
       <div className="auth">
-        <form ref={card} className="auth-card stack" onSubmit={submit}>
-          <div>
-            <div className="brand"><span className="brand-mark">S</span>Sauda</div>
-            <h2>Восстановление пароля</h2>
-            <p className="muted">Укажите почту аккаунта — пришлём код, чтобы задать новый пароль.</p>
-          </div>
-          <label className="field">
-            <span>Почта</span>
-            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoFocus autoComplete="email" />
-          </label>
-          <Captcha round={round} onToken={setCaptcha} />
-          {error && <p className="error-text">{error}</p>}
-          <button className="btn primary large" disabled={busy}>Прислать код</button>
-          <div className="auth-links">
-            <button type="button" className="link-btn" onClick={() => go('login')}>Вернуться ко входу</button>
+        <form ref={card} className="auth-card morph" onSubmit={submit}>
+          <div className="stack auth-inner">
+            <div>
+              <div className="brand"><span className="brand-mark">S</span>Sauda</div>
+              <h2>Восстановление пароля</h2>
+              <p className="muted">Укажите почту аккаунта — пришлём код, чтобы задать новый пароль.</p>
+            </div>
+            <label className="field">
+              <span>Почта</span>
+              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoFocus autoComplete="email" />
+            </label>
+            <Captcha round={round} onToken={setCaptcha} />
+            {error && <p className="error-text">{error}</p>}
+            <button className="btn primary large" disabled={busy}>Прислать код</button>
+            <div className="auth-links">
+              <button type="button" className="link-btn" onClick={() => go('login')}>Вернуться ко входу</button>
+            </div>
           </div>
         </form>
       </div>
@@ -293,166 +304,168 @@ export function AuthPage() {
 
   return (
     <div className="auth">
-      <form ref={card} className={`auth-card stack ${mode === 'register' ? 'wide' : ''}`} onSubmit={submit}>
-        <div>
-          <div className="brand"><span className="brand-mark">S</span>Sauda</div>
-          <p className="muted">Учёт и касса для магазинов, каталог, склад и заказы для компаний</p>
-        </div>
-        <div className="segmented">
-          <button type="button" className={mode === 'login' ? 'active' : ''} onClick={() => go('login')}>Вход</button>
-          <button type="button" className={mode === 'register' ? 'active' : ''} onClick={() => go('register')}>Регистрация</button>
-        </div>
-        {mode === 'register' && (
-          <>
-            <div className="field">
-              <span>Кто вы?</span>
-              <div className="choice three">
-                <button type="button" className={kind === 'store' ? 'active' : ''} onClick={() => morph(() => setKind('store'))}>
-                  <b>Магазин</b>
-                  <span>Учёт товаров, касса, заказы у компаний</span>
-                </button>
-                <button type="button" className={kind === 'company' ? 'active' : ''} onClick={() => morph(() => setKind('company'))}>
-                  <b>Компания</b>
-                  <span>Производитель или дистрибьютор: каталог, склад и заказы магазинов</span>
-                </button>
-                <button type="button" className={employee ? 'active' : ''} onClick={() => morph(() => setKind('employee'))}>
-                  <b>Сотрудник</b>
-                  <span>Меня пригласили в магазин или компанию</span>
-                </button>
-              </div>
-            </div>
-            {employee && (
-              <p className="hint">
-                Укажите почту, на которую владелец отправил приглашение: после входа вы сразу попадёте в его магазин или компанию.
-              </p>
-            )}
-            {kind === 'store' && (
+      <form ref={card} className={`auth-card morph ${mode === 'register' ? 'wide' : ''}`} onSubmit={submit}>
+        <div className="stack auth-inner">
+          <div>
+            <div className="brand"><span className="brand-mark">S</span>Sauda</div>
+            <p className="muted">Учёт и касса для магазинов, каталог, склад и заказы для компаний</p>
+          </div>
+          <div className="segmented">
+            <button type="button" className={mode === 'login' ? 'active' : ''} onClick={() => go('login')}>Вход</button>
+            <button type="button" className={mode === 'register' ? 'active' : ''} onClick={() => go('register')}>Регистрация</button>
+          </div>
+          {mode === 'register' && (
+            <>
               <div className="field">
-                <span>Чем торгуете</span>
-                <div className="choice small">
-                  <button type="button" className={business === 'grocery' ? 'active' : ''} onClick={() => setBusiness('grocery')}>
-                    <b>Продукты и товары для дома</b>
+                <span>Кто вы?</span>
+                <div className="choice three">
+                  <button type="button" className={kind === 'store' ? 'active' : ''} onClick={() => morph(() => setKind('store'))}>
+                    <b>Магазин</b>
+                    <span>Учёт товаров, касса, заказы у компаний</span>
                   </button>
-                  <button type="button" className={business === 'pharmacy' ? 'active' : ''} onClick={() => setBusiness('pharmacy')}>
-                    <b>Аптека <span className="badge warn">скоро</span></b>
+                  <button type="button" className={kind === 'company' ? 'active' : ''} onClick={() => morph(() => setKind('company'))}>
+                    <b>Компания</b>
+                    <span>Производитель или дистрибьютор: каталог, склад и заказы магазинов</span>
+                  </button>
+                  <button type="button" className={employee ? 'active' : ''} onClick={() => morph(() => setKind('employee'))}>
+                    <b>Сотрудник</b>
+                    <span>Меня пригласили в магазин или компанию</span>
                   </button>
                 </div>
               </div>
-            )}
-            <label className="field">
-              <span>Ваше имя</span>
-              <input value={fullName} onChange={(e) => setFullName(e.target.value)} required autoComplete="name" placeholder="Айгерим Сапарова" />
-            </label>
-            {!employee && (
-              <>
-                <label className="field">
-                  <span>{kind === 'store' ? 'Название магазина' : 'Название компании'}</span>
-                  <input value={name} onChange={(e) => setName(e.target.value)} required autoComplete="organization"
-                    placeholder={kind === 'store' ? 'ИП Иванов' : 'ТОО «Молочный завод»'} />
-                </label>
-                <div className="form-grid">
-                  <div className="field">
-                    <span>Город</span>
-                    <CitySelect value={city} onChange={setCity} aria-label="Город" />
+              {employee && (
+                <p className="hint">
+                  Укажите почту, на которую владелец отправил приглашение: после входа вы сразу попадёте в его магазин или компанию.
+                </p>
+              )}
+              {kind === 'store' && (
+                <div className="field">
+                  <span>Чем торгуете</span>
+                  <div className="choice small">
+                    <button type="button" className={business === 'grocery' ? 'active' : ''} onClick={() => setBusiness('grocery')}>
+                      <b>Продукты и товары для дома</b>
+                    </button>
+                    <button type="button" className={business === 'pharmacy' ? 'active' : ''} onClick={() => setBusiness('pharmacy')}>
+                      <b>Аптека <span className="badge warn">скоро</span></b>
+                    </button>
                   </div>
+                </div>
+              )}
+              <label className="field">
+                <span>Ваше имя</span>
+                <input value={fullName} onChange={(e) => setFullName(e.target.value)} required autoComplete="name" placeholder="Айгерим Сапарова" />
+              </label>
+              {!employee && (
+                <>
                   <label className="field">
-                    <span>Телефон</span>
-                    <PhoneInput value={phone} onChange={setPhone} required autoComplete="tel" />
+                    <span>{kind === 'store' ? 'Название магазина' : 'Название компании'}</span>
+                    <input value={name} onChange={(e) => setName(e.target.value)} required autoComplete="organization"
+                      placeholder={kind === 'store' ? 'ИП Иванов' : 'ТОО «Молочный завод»'} />
+                  </label>
+                  <div className="form-grid">
+                    <div className="field">
+                      <span>Город</span>
+                      <CitySelect value={city} onChange={setCity} aria-label="Город" />
+                    </div>
+                    <label className="field">
+                      <span>Телефон</span>
+                      <PhoneInput value={phone} onChange={setPhone} required autoComplete="tel" />
+                    </label>
+                  </div>
+                </>
+              )}
+            </>
+          )}
+          <label className="field">
+            <span>{mode === 'login' ? 'Почта или логин' : 'Почта'}</span>
+            <input
+              type={mode === 'login' ? 'text' : 'email'}
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              autoComplete={mode === 'login' ? 'username' : 'email'}
+            />
+          </label>
+          <label className="field">
+            <span>Пароль</span>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              minLength={mode === 'login' ? 6 : PASSWORD_MIN}
+              autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+            />
+            {mode === 'register' && <PasswordHint value={password} />}
+          </label>
+          {mode === 'login' && (
+            <div className="auth-links" style={{ justifyContent: 'flex-end', marginTop: -4 }}>
+              <button type="button" className="link-btn" onClick={() => go('reset')}>Забыли пароль?</button>
+            </div>
+          )}
+          {mode === 'register' && (
+            <>
+              <label className="field">
+                <span>Пароль ещё раз</span>
+                <input type="password" value={password2} onChange={(e) => setPassword2(e.target.value)} required autoComplete="new-password" />
+                {password2 && (
+                  <span className={`hint ${password2 === password ? 'ok-text' : 'error-text'}`}>
+                    {password2 === password ? '✓ пароли совпадают' : 'пароли не совпадают'}
+                  </span>
+                )}
+              </label>
+              {!employee && (
+                <div className="form-grid">
+                  <label className="field">
+                    <span>Откуда узнали о Sauda</span>
+                    <select value={source} onChange={(e) => setSource(e.target.value)}>
+                      <option value="">Не скажу</option>
+                      {SOURCES.map((s) => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                  </label>
+                  <label className="field">
+                    <span>Промокод</span>
+                    <input value={promo} onChange={(e) => setPromo(e.target.value)} placeholder="если есть" autoComplete="off" maxLength={32} />
                   </label>
                 </div>
-              </>
-            )}
-          </>
-        )}
-        <label className="field">
-          <span>{mode === 'login' ? 'Почта или логин' : 'Почта'}</span>
-          <input
-            type={mode === 'login' ? 'text' : 'email'}
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-            autoComplete={mode === 'login' ? 'username' : 'email'}
-          />
-        </label>
-        <label className="field">
-          <span>Пароль</span>
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-            minLength={mode === 'login' ? 6 : PASSWORD_MIN}
-            autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
-          />
-          {mode === 'register' && <PasswordHint value={password} />}
-        </label>
-        {mode === 'login' && (
-          <div className="auth-links" style={{ justifyContent: 'flex-end', marginTop: -4 }}>
-            <button type="button" className="link-btn" onClick={() => go('reset')}>Забыли пароль?</button>
-          </div>
-        )}
-        {mode === 'register' && (
-          <>
-            <label className="field">
-              <span>Пароль ещё раз</span>
-              <input type="password" value={password2} onChange={(e) => setPassword2(e.target.value)} required autoComplete="new-password" />
-              {password2 && (
-                <span className={`hint ${password2 === password ? 'ok-text' : 'error-text'}`}>
-                  {password2 === password ? '✓ пароли совпадают' : 'пароли не совпадают'}
-                </span>
               )}
-            </label>
-            {!employee && (
-              <div className="form-grid">
-                <label className="field">
-                  <span>Откуда узнали о Sauda</span>
-                  <select value={source} onChange={(e) => setSource(e.target.value)}>
-                    <option value="">Не скажу</option>
-                    {SOURCES.map((s) => <option key={s} value={s}>{s}</option>)}
-                  </select>
-                </label>
-                <label className="field">
-                  <span>Промокод</span>
-                  <input value={promo} onChange={(e) => setPromo(e.target.value)} placeholder="если есть" autoComplete="off" maxLength={32} />
-                </label>
-              </div>
-            )}
-            <label className="check-row">
-              <input type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} />
-              <span>
-                Принимаю <Link to="/terms" target="_blank">условия оферты</Link> и{' '}
-                <Link to="/privacy" target="_blank">политику конфиденциальности</Link>, согласен на обработку персональных данных
-              </span>
-            </label>
-          </>
-        )}
-        <Captcha round={round} onToken={setCaptcha} />
-        {error && <p className="error-text">{error}</p>}
-        {notice && <p className="ok-text">{notice}</p>}
-        <button className="btn primary large" disabled={busy}>
-          {mode === 'login' ? 'Войти' : 'Создать аккаунт'}
-        </button>
-        {mode === 'login' && (
-          <>
-            <div className="auth-or"><span>или</span></div>
-            <button type="button" className="btn large" disabled={busy} onClick={demo}>Попробовать без регистрации</button>
-            <p className="hint" style={{ textAlign: 'center' }}>Откроется демо-магазин с товарами и продажами: можно пробить чек и посмотреть отчёты</p>
-          </>
-        )}
-        {GOOGLE && (
-          <>
-            {mode !== 'login' && <div className="auth-or"><span>или</span></div>}
-            <button type="button" className="btn large" onClick={google}>
-              <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true">
-                <path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.1 7.9 3l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z" />
-                <path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.1 7.9 3l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z" />
-                <path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-7.9l-6.5 5C9.5 39.6 16.2 44 24 44z" />
-                <path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z" />
-              </svg>
-              {mode === 'login' ? 'Войти через Google' : 'Зарегистрироваться через Google'}
-            </button>
-          </>
-        )}
+              <label className="check-row">
+                <input type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} />
+                <span>
+                  Принимаю <Link to="/terms" target="_blank">условия оферты</Link> и{' '}
+                  <Link to="/privacy" target="_blank">политику конфиденциальности</Link>, согласен на обработку персональных данных
+                </span>
+              </label>
+            </>
+          )}
+          <Captcha round={round} onToken={setCaptcha} />
+          {error && <p className="error-text">{error}</p>}
+          {notice && <p className="ok-text">{notice}</p>}
+          <button className="btn primary large" disabled={busy}>
+            {mode === 'login' ? 'Войти' : 'Создать аккаунт'}
+          </button>
+          {mode === 'login' && (
+            <>
+              <div className="auth-or"><span>или</span></div>
+              <button type="button" className="btn large" disabled={busy} onClick={demo}>Попробовать без регистрации</button>
+              <p className="hint" style={{ textAlign: 'center' }}>Откроется демо-магазин с товарами и продажами: можно пробить чек и посмотреть отчёты</p>
+            </>
+          )}
+          {GOOGLE && (
+            <>
+              {mode !== 'login' && <div className="auth-or"><span>или</span></div>}
+              <button type="button" className="btn large" onClick={google}>
+                <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true">
+                  <path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.1 7.9 3l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z" />
+                  <path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.1 7.9 3l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z" />
+                  <path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-7.9l-6.5 5C9.5 39.6 16.2 44 24 44z" />
+                  <path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z" />
+                </svg>
+                {mode === 'login' ? 'Войти через Google' : 'Зарегистрироваться через Google'}
+              </button>
+            </>
+          )}
+        </div>
       </form>
     </div>
   );
