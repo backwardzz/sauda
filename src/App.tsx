@@ -3,6 +3,7 @@ import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { configured } from './lib/supabase';
 import { useSession } from './lib/session';
 import { AuthPage } from './pages/Auth';
+import { DemoStarter } from './pages/Demo';
 import { Privacy, Terms } from './pages/Legal';
 import { NewPassword } from './pages/NewPassword';
 import { Onboarding } from './pages/Onboarding';
@@ -97,7 +98,7 @@ export function App() {
   if (loading) return <div className="auth muted">Загрузка…</div>;
   if (!user) return <AuthPage />;
   if (recovering) return <NewPassword />;
-  if (!org) return <Onboarding />;
+  if (!org) return user.is_anonymous ? <DemoStarter /> : <Onboarding />;
 
   // Компания (производитель, дистрибьютор): каталог, склад и заказы магазинов, без кассы.
   if (org.kind === 'company') {

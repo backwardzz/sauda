@@ -620,6 +620,34 @@ async function main() {
   await must(s.from('companies').update({ price_access: 'stores' }).eq('org_id', supOrg));
   check('открытый прайс снова виден всем магазинам', priced(await must(b.rpc('store_offers', { p_store: storeB, p_company: supOrg }))) > 0);
 
+  console.log('Демо без регистрации');
+  await fails('зарегистрированный пользователь не открывает демо', a.rpc('start_demo'), 'без регистрации');
+  const guest = createClient(url, key, { auth: { persistSession: false } });
+  await must(guest.auth.signInAnonymously());
+  const demoOrg = await must(guest.rpc('start_demo'));
+  check('повторный вход в демо — тот же магазин', (await must(guest.rpc('start_demo'))) === demoOrg);
+  const demoShifts = await must(guest.from('shifts').select('closed_at'));
+  check('в демо есть товары, продажи за две недели и открытая смена',
+    (await must(guest.from('products').select('id'))).length > 20 && (await must(guest.from('sales').select('id'))).length > 50
+      && demoShifts.filter((x: Row) => !x.closed_at).length === 1, demoShifts.length);
+  check('демо не видит чужие магазины', (await must(guest.from('orgs').select('id').eq('id', orgA))).length === 0);
+  await fails('анонимный вход не заводит компанию', guest.rpc('create_org', { p_name: 'Хак', p_kind: 'company', p_city: almaty }), 'зарегистрируйтесь');
+  await fails('из демо не приглашают сотрудников', guest.from('invites').insert({ org_id: demoOrg, email: 'x@test.local' }), 'зарегистрируйтесь');
+  const demoStore = (await must(guest.from('stores').select('id')))[0].id as string;
+  const demoOffers = await must(guest.rpc('store_offers', { p_store: demoStore, p_company: supOrg }));
+  check('демо видит каталог компании без цен', demoOffers.length > 0 && demoOffers.every((r: Row) => r.price == null), demoOffers.length);
+  await fails('из демо не заказывают у компаний',
+    guest.rpc('place_order', { p_store: demoStore, p_supplier: supOrg, p_items: [{ variant_id: demoOffers[0].variant_id, qty: 1 }] }), 'демо');
+  await fails('из демо не запрашивают прайс', guest.rpc('request_price_access', { p_company: supOrg, p_store_org: demoOrg }), 'демо');
+  const demoReg = (await must(guest.from('registers').select('id')))[0].id as string;
+  await fails('в демо не подключают Webkassa',
+    guest.rpc('set_register_fiscal', { p_register: demoReg, p_cashbox: 'SWK', p_login: 'x', p_password: 'y', p_enabled: true }), 'демо');
+  if (admin) {
+    const demoUser = (await guest.auth.getUser()).data.user!.id;
+    await must(admin.from('orgs').delete().eq('id', demoOrg));
+    await admin.auth.admin.deleteUser(demoUser);
+  }
+
   console.log('Фото товара с компьютера');
   const photoBytes = new Blob([new Uint8Array([0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x45, 0x42, 0x50])], { type: 'image/webp' });
   const photoPath = `${supOrg}/${randomBytes(8).toString('hex')}.webp`;
