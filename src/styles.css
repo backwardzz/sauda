@@ -722,3 +722,8 @@ a.stat:hover { text-decoration: none; }
 /* вход и регистрация: карточка меняет размер, а содержимое стоит в конечной раскладке по центру и не перестраивается */
 .auth-card.morph { display: flex; justify-content: center; align-items: flex-start; }
 .auth-card.morph > .auth-inner { width: 100%; min-width: 0; gap: 8px; }
+
+/* выбор компании в заявке филиала */
+.pick-list { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
+.pick-list button { display: flex; justify-content: space-between; gap: 12px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); cursor: pointer; text-align: left; }
+.pick-list button:hover { border-color: var(--line-strong); }

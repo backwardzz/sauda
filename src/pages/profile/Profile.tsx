@@ -12,11 +12,12 @@ import { Modal } from '../../ui/Modal';
 import { PhoneInput } from '../../ui/PhoneInput';
 import { toast } from '../../ui/toast';
 import { ApiKeys } from './ApiKeys';
+import { BranchRequests } from './BranchRequests';
 import { Branches } from './Branches';
 
 /** Профиль магазина или компании: сначала просмотр, правка — по кнопке. */
 export function Profile() {
-  const { org, role, company, branches, stores, reload } = useOrg();
+  const { org, role, company, branchId, branches, stores, reload } = useOrg();
   const cities = useCities();
   const [editing, setEditing] = useState(false);
   const owner = role === 'owner';
@@ -116,6 +117,7 @@ export function Profile() {
         )}
       </div>
 
+      {isCompany && !branchId && <BranchRequests />}
       {isCompany && <Branches />}
       {isCompany && owner && <ApiKeys />}
 

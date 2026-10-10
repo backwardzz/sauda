@@ -24,9 +24,11 @@ interface Zone {
 
 /** Филиалы компании по городам. Заказ магазина попадает в филиал его города, иначе — в главный. */
 export function Branches() {
-  const { org, role, branches, reload } = useOrg();
+  const { org, role, canManage, branchId, branches, reload } = useOrg();
   const cities = useCities();
   const owner = role === 'owner';
+  // руководитель филиала правит карточку своего филиала; город, зону доставки и «главный» меняет владелец
+  const canEdit = (b: Branch) => owner || (canManage && branchId === b.id);
   const [edit, setEdit] = useState<Branch | 'new' | null>(null);
   const [form, setForm] = useState(EMPTY);
   const [busy, setBusy] = useState(false);
@@ -95,14 +97,15 @@ export function Branches() {
     const markup = form.markup.trim() === '' ? 0 : Number(form.markup.replace(',', '.').replace(/\s/g, ''));
     if (!Number.isFinite(markup) || markup <= -100 || markup > 500) return toast.error('Надбавка — число в процентах, например 8 или -5');
     const row = {
-      city_id: form.city, name: form.name.trim() || `Филиал в городе ${cityName(cities, form.city)}`, address: form.address.trim(),
+      ...(owner ? { city_id: form.city } : {}), name: form.name.trim() || `Филиал в городе ${cityName(cities, form.city)}`, address: form.address.trim(),
       phone: formatPhone(form.phone), manager_name: form.manager.trim(), work_hours: form.hours.trim(),
       markup_pct: markup, min_order: form.minOrder.trim() === '' ? null : Math.max(parseNum(form.minOrder), 0), delivery_note: form.delivery.trim(),
     };
     void run(async () => {
       const id = edit === 'new'
-        ? (await q<Branch>(db.from('company_branches').insert({ org_id: org.id, ...row }).select().single())).id
+        ? (await q<Branch>(db.from('company_branches').insert({ org_id: org.id, city_id: form.city!, ...row }).select().single())).id
         : (await q(db.from('company_branches').update(row).eq('id', (edit as Branch).id)), (edit as Branch).id);
+      if (!owner) return;
       await q(db.rpc('set_branch_zones', { p_branch: id, p_regions: form.regions, p_cities: form.zoneCities }));
       if (form.main && !(edit !== 'new' && (edit as Branch).is_main)) await q(db.rpc('set_main_branch', { p_branch: id }));
     }, edit === 'new' ? 'Филиал добавлен' : 'Сохранено');
@@ -129,7 +132,7 @@ export function Branches() {
                 <div className="row">
                   <b className="grow">{b.name}</b>
                   {b.is_main && <span className="badge accent">главный</span>}
-                  {owner && <button className="icon-btn small" onClick={() => open(b)} aria-label={`Изменить: ${b.name}`}><Icon name="edit" size={15} /></button>}
+                  {canEdit(b) && <button className="icon-btn small" onClick={() => open(b)} aria-label={`Изменить: ${b.name}`}><Icon name="edit" size={15} /></button>}
                 </div>
                 <div className="branch-lines">
                   {b.address && <span><Icon name="building" size={14} />{b.address}</span>}
@@ -159,7 +162,7 @@ export function Branches() {
         <Modal title={edit === 'new' ? 'Новый филиал' : 'Филиал'} onClose={() => setEdit(null)} width={640}
           footer={
             <>
-              {edit !== 'new' && !edit.is_main && (
+              {owner && edit !== 'new' && !edit.is_main && (
                 <button className="btn danger" disabled={busy} onClick={() => run(() => q(db.rpc('delete_company_branch', { p_branch: (edit as Branch).id })), 'Филиал удалён')}>
                   Удалить
                 </button>
@@ -172,7 +175,9 @@ export function Branches() {
           <div className="form-grid">
             <div className="field">
               <span>Город <b>*</b></span>
-              <CitySelect value={form.city} onChange={(city) => set({ city })} autoFocus={edit === 'new'} aria-label="Город" />
+              {owner
+                ? <CitySelect value={form.city} onChange={(city) => set({ city })} autoFocus={edit === 'new'} aria-label="Город" />
+                : <input value={cityLabel(cities, form.city ?? 0)} disabled title="Город филиала меняет владелец компании" />}
             </div>
             <label className="field">
               <span>Название</span>
@@ -209,6 +214,8 @@ export function Branches() {
             </label>
             <p className="hint wide">Цену на отдельный товар для этого склада можно задать в разделе «Склад» → «Цены».</p>
 
+            {owner && (
+            <>
             <div className="section-title wide" style={{ marginBottom: 0 }}>Куда возит этот склад</div>
             <p className="hint wide">Свой город обслуживается всегда. Отметьте области и добавьте города, магазины которых тоже получают товар и цены этого склада. Остальные города обслуживает главный филиал.</p>
             <div className="zone-box wide">
@@ -238,6 +245,8 @@ export function Branches() {
               <input type="checkbox" checked={form.main} disabled={edit !== 'new' && edit.is_main} onChange={(e) => set({ main: e.target.checked })} />
               Главный филиал: принимает заказы из городов, где у компании нет своего филиала
             </label>
+            </>
+            )}
           </div>
         </Modal>
       )}

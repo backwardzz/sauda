@@ -27,8 +27,9 @@ const STATUS: Record<PriceAccessStatus, { label: string; badge: string }> = {
 
 /** Запросы магазинов на прайс и открытые доступы. */
 export function PriceAccess() {
-  const { org, company, canManage } = useCompany();
-  const list = useQuery(() => q<Row[]>(db.rpc('price_access_list', { p_company: org.id })), [org.id]);
+  const { org, company, canManage, isHq } = useCompany();
+  // запросы прайса разбирает головной офис: сотруднику филиала база их не отдаёт
+  const list = useQuery(async () => (isHq ? q<Row[]>(db.rpc('price_access_list', { p_company: org.id })) : []), [org.id, isHq]);
   const [busy, setBusy] = useState<string | null>(null);
   const closed = company.price_access === 'approved';
 
@@ -72,6 +73,8 @@ export function PriceAccess() {
       ),
     },
   ];
+
+  if (!isHq) return <div className="card empty">Доступ магазинов к ценам открывает головной офис компании.</div>;
 
   const pending = (list.data ?? []).filter((r) => r.status === 'pending').length;
 

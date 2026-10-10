@@ -8,6 +8,8 @@ import type { Branch, Company, Org, Register, Role, Store } from './types';
 interface Membership {
   role: Role;
   org: Org;
+  /** Филиал компании, к которому привязан сотрудник; null — головной офис (у магазинов всегда null). */
+  branchId: string | null;
 }
 
 interface SessionState {
@@ -18,10 +20,12 @@ interface SessionState {
   org: Org | null;
   role: Role | null;
   canManage: boolean;
+  /** Филиал сотрудника компании: он видит и ведёт только его. null — головной офис, видит все филиалы. */
+  branchId: string | null;
   stores: Store[];
   store: Store | null;
   registers: Register[];
-  /** Витрина и филиалы — только у компании. */
+  /** Витрина и филиалы — только у компании. Сотруднику филиала в списке виден только его филиал. */
   company: Company | null;
   branches: Branch[];
   setOrgId: (id: string) => void;
@@ -105,10 +109,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     // без входа списки очищаются при отрисовке, ниже
     if (!userId) return;
     await db.rpc('accept_invites');
-    const rows = await q<{ role: Role; orgs: Org }[]>(
-      db.from('org_members').select('role, orgs(*)').eq('user_id', userId).order('created_at') as never,
+    const rows = await q<{ role: Role; branch_id: string | null; orgs: Org }[]>(
+      db.from('org_members').select('role, branch_id, orgs(*)').eq('user_id', userId).order('created_at') as never,
     );
-    const list = rows.filter((r) => r.orgs).map((r) => ({ role: r.role, org: r.orgs }));
+    const list = rows.filter((r) => r.orgs).map((r) => ({ role: r.role, org: r.orgs, branchId: r.branch_id }));
     const current = list.find((m) => m.org.id === orgId) ?? list[0];
     const isCompany = current?.org.kind === 'company';
     const [s, r, c, b] = current
@@ -162,11 +166,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       org: current?.org ?? null,
       role: current?.role ?? null,
       canManage: current?.role === 'owner' || current?.role === 'manager',
+      branchId: current?.branchId ?? null,
       stores,
       store: currentStore,
       registers,
       company,
-      branches,
+      branches: current?.branchId ? branches.filter((b) => b.id === current.branchId) : branches,
       setOrgId: (id) => {
         store('sauda:org', id);
         setOrgIdState(id);
@@ -212,5 +217,6 @@ export function useWorkspace() {
 export function useCompany() {
   const s = useSession();
   if (!s.org || !s.user || !s.company) throw new Error('Нет выбранной компании');
-  return { ...s, org: s.org, user: s.user, company: s.company };
+  // общий каталог, доступ к ценам и филиалы компании меняет только головной офис
+  return { ...s, org: s.org, user: s.user, company: s.company, isHq: s.branchId == null, canEditCatalog: s.canManage && s.branchId == null };
 }

@@ -44,7 +44,7 @@ export function PasswordHint({ value }: { value: string }) {
 }
 
 type Mode = 'login' | 'register' | 'reset';
-type Kind = 'store' | 'company' | 'employee';
+type Kind = 'store' | 'company' | 'employee' | 'branch';
 
 const SOURCES = ['Знакомые или коллеги', 'Instagram', 'TikTok', 'WhatsApp или Telegram', 'Поиск в интернете', 'Представитель компании-поставщика', 'Другое'];
 
@@ -119,7 +119,8 @@ export function AuthPage() {
     if (inner && hold) inner.animate([{ ...hold, opacity: 0 }, { ...hold, opacity: 1, offset: 0.6 }, { ...hold, opacity: 1 }], timing);
   });
   const go = (m: Mode) => morph(() => { setMode(m); setError(null); setNotice(null); });
-  const employee = kind === 'employee';
+  // сотрудник по приглашению и филиал компании не заводят свою организацию: только имя, почта и пароль
+  const employee = kind === 'employee' || kind === 'branch';
 
   const sendRecovery = (to: string) =>
     db.auth.resetPasswordForEmail(to, { redirectTo: confirmUrl(), captchaToken });
@@ -318,7 +319,7 @@ export function AuthPage() {
             <>
               <div className="field">
                 <span>Кто вы?</span>
-                <div className="choice three">
+                <div className="choice">
                   <button type="button" className={kind === 'store' ? 'active' : ''} onClick={() => morph(() => setKind('store'))}>
                     <b>Магазин</b>
                     <span>Учёт товаров, касса, заказы у компаний</span>
@@ -327,7 +328,11 @@ export function AuthPage() {
                     <b>Компания</b>
                     <span>Производитель или дистрибьютор: каталог, склад и заказы магазинов</span>
                   </button>
-                  <button type="button" className={employee ? 'active' : ''} onClick={() => morph(() => setKind('employee'))}>
+                  <button type="button" className={kind === 'branch' ? 'active' : ''} onClick={() => morph(() => setKind('branch'))}>
+                    <b>Филиал компании</b>
+                    <span>Склад или филиал: свой кабинет с заказами, остатками и ценами</span>
+                  </button>
+                  <button type="button" className={kind === 'employee' ? 'active' : ''} onClick={() => morph(() => setKind('employee'))}>
                     <b>Сотрудник</b>
                     <span>Меня пригласили в магазин или компанию</span>
                   </button>
@@ -335,7 +340,9 @@ export function AuthPage() {
               </div>
               {employee && (
                 <p className="hint">
-                  Укажите почту, на которую владелец отправил приглашение: после входа вы сразу попадёте в его магазин или компанию.
+                  {kind === 'branch'
+                    ? 'Компанию и свой филиал выберете на следующем шаге. Кабинет откроется, когда владелец компании одобрит заявку.'
+                    : 'Укажите почту, на которую владелец отправил приглашение: после входа вы сразу попадёте в его магазин или компанию.'}
                 </p>
               )}
               {kind === 'store' && (
