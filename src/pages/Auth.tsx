@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { formatPhone } from '../lib/format';
 import { useSession } from '../lib/session';
@@ -90,7 +90,26 @@ export function AuthPage() {
   const needCaptcha = Boolean(CAPTCHA_KEY) && !captcha;
   // токен капчи одноразовый: после любого запроса проверка проходит заново
   const nextCaptcha = () => { setCaptcha(null); setRound((r) => r + 1); };
-  const go = (m: Mode) => { setMode(m); setError(null); setNotice(null); };
+  // Карточка плавно меняет размер, когда меняется её содержимое (вход ↔ регистрация, «Сотрудник» прячет поля):
+  // перед изменением запоминается размер, после отрисовки карточка анимируется от старого размера к новому.
+  const card = useRef<HTMLFormElement>(null);
+  const sizeBefore = useRef<{ w: number; h: number } | null>(null);
+  const morph = (change: () => void) => {
+    const el = card.current;
+    sizeBefore.current = el ? { w: el.offsetWidth, h: el.offsetHeight } : null;
+    change();
+  };
+  useLayoutEffect(() => {
+    const el = card.current;
+    const from = sizeBefore.current;
+    sizeBefore.current = null;
+    if (!el || !from || !el.animate || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const to = { w: el.offsetWidth, h: el.offsetHeight };
+    if (from.w === to.w && from.h === to.h) return;
+    const frame = (s: { w: number; h: number }) => ({ width: `${s.w}px`, height: `${s.h}px`, maxWidth: 'none', overflow: 'hidden' });
+    el.animate([frame(from), frame(to)], { duration: 380, easing: 'cubic-bezier(0.4, 0, 0.2, 1)' });
+  });
+  const go = (m: Mode) => morph(() => { setMode(m); setError(null); setNotice(null); });
   const employee = kind === 'employee';
 
   const sendRecovery = (to: string) =>
@@ -251,7 +270,7 @@ export function AuthPage() {
   if (mode === 'reset') {
     return (
       <div className="auth">
-        <form className="auth-card stack" onSubmit={submit}>
+        <form ref={card} className="auth-card stack" onSubmit={submit}>
           <div>
             <div className="brand"><span className="brand-mark">S</span>Sauda</div>
             <h2>Восстановление пароля</h2>
@@ -274,7 +293,7 @@ export function AuthPage() {
 
   return (
     <div className="auth">
-      <form className={`auth-card stack ${mode === 'register' ? 'wide' : ''}`} onSubmit={submit}>
+      <form ref={card} className={`auth-card stack ${mode === 'register' ? 'wide' : ''}`} onSubmit={submit}>
         <div>
           <div className="brand"><span className="brand-mark">S</span>Sauda</div>
           <p className="muted">Учёт и касса для магазинов, каталог, склад и заказы для компаний</p>
@@ -288,15 +307,15 @@ export function AuthPage() {
             <div className="field">
               <span>Кто вы?</span>
               <div className="choice three">
-                <button type="button" className={kind === 'store' ? 'active' : ''} onClick={() => setKind('store')}>
+                <button type="button" className={kind === 'store' ? 'active' : ''} onClick={() => morph(() => setKind('store'))}>
                   <b>Магазин</b>
                   <span>Учёт товаров, касса, заказы у компаний</span>
                 </button>
-                <button type="button" className={kind === 'company' ? 'active' : ''} onClick={() => setKind('company')}>
+                <button type="button" className={kind === 'company' ? 'active' : ''} onClick={() => morph(() => setKind('company'))}>
                   <b>Компания</b>
                   <span>Производитель или дистрибьютор: каталог, склад и заказы магазинов</span>
                 </button>
-                <button type="button" className={employee ? 'active' : ''} onClick={() => setKind('employee')}>
+                <button type="button" className={employee ? 'active' : ''} onClick={() => morph(() => setKind('employee'))}>
                   <b>Сотрудник</b>
                   <span>Меня пригласили в магазин или компанию</span>
                 </button>
