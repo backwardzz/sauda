@@ -2,12 +2,11 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { db, errorText, q } from '../lib/supabase';
 import { useSession } from '../lib/session';
-import { BranchJoin } from './BranchJoin';
 
 /**
  * Первый вход: у пользователя ещё нет организации.
  * После регистрации торговая точка или поставщик создаются сами из данных формы — человек видит только «Создаём кабинет…».
- * Филиал поставщика отправляет заявку владельцу компании. Приглашённые сюда не попадают: их пускает приглашение.
+ * Приглашённые сюда не попадают: их пускает приглашение.
  */
 export function Onboarding() {
   const { user, reload, signOut } = useSession();
@@ -52,8 +51,6 @@ export function Onboarding() {
     // запускается один раз при открытии
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  if (meta.account_kind === 'branch') return <BranchJoin />;
 
   if (complete && busy) return <div className="auth muted">{isStore ? 'Создаём кабинет торговой точки…' : 'Создаём кабинет поставщика…'}</div>;
 

@@ -44,8 +44,8 @@ export function PasswordHint({ value }: { value: string }) {
 }
 
 type Mode = 'login' | 'register' | 'reset';
-/** branch — филиал поставщика: организацию не заводит, а на следующем шаге отправляет заявку владельцу компании. */
-type Kind = 'store' | 'company' | 'branch';
+/** Ролей две. Сотрудники не регистрируются: владелец приглашает их, и они входят через «Вход». */
+type Kind = 'store' | 'company';
 
 const SOURCES = ['Знакомые или коллеги', 'Instagram', 'TikTok', 'WhatsApp или Telegram', 'Поиск в интернете', 'Представитель компании-поставщика', 'Другое'];
 
@@ -91,7 +91,7 @@ export function AuthPage() {
   const needCaptcha = Boolean(CAPTCHA_KEY) && !captcha;
   // токен капчи одноразовый: после любого запроса проверка проходит заново
   const nextCaptcha = () => { setCaptcha(null); setRound((r) => r + 1); };
-  // Карточка плавно меняет размер, когда меняется её содержимое (вход ↔ регистрация, филиал прячет поля):
+  // Карточка плавно меняет размер, когда меняется её содержимое (вход ↔ регистрация, аптека показывает подсказку):
   // перед изменением запоминается размер, после отрисовки карточка анимируется от старого размера к новому.
   const card = useRef<HTMLFormElement>(null);
   const sizeBefore = useRef<{ w: number; h: number } | null>(null);
@@ -120,8 +120,6 @@ export function AuthPage() {
     if (inner && hold) inner.animate([{ ...hold, opacity: 0 }, { ...hold, opacity: 1, offset: 0.6 }, { ...hold, opacity: 1 }], timing);
   });
   const go = (m: Mode) => morph(() => { setMode(m); setError(null); setNotice(null); });
-  // филиал не заводит свою организацию: только имя, почта и пароль
-  const employee = kind === 'branch';
   // Первый вход по приглашению: на почту есть приглашение, а аккаунта ещё нет — форма входа просит придумать пароль.
   const [invited, setInvited] = useState(false);
   const firstLogin = mode === 'login' && invited;
@@ -202,7 +200,7 @@ export function AuthPage() {
       if (password !== password2) return setError('Пароли не совпадают');
     }
     if (mode === 'register') {
-      if (!employee && city == null) return setError('Выберите город');
+      if (city == null) return setError('Выберите город');
       const weak = passwordChecks(password).find((c) => !c.ok);
       if (weak) return setError(`Пароль: ${weak.text}`);
       if (password !== password2) return setError('Пароли не совпадают');
@@ -249,7 +247,9 @@ export function AuthPage() {
             data: {
               full_name: fullName.trim(),
               account_kind: kind,
-              ...(employee ? {} : { org_name: name.trim(), city_id: city, phone: formatPhone(phone) }),
+              org_name: name.trim(),
+              city_id: city,
+              phone: formatPhone(phone),
               ...(kind === 'store' ? { business } : {}),
               source,
               promo: promo.trim().toUpperCase(),
@@ -361,7 +361,7 @@ export function AuthPage() {
             <>
               <div className="field">
                 <span>Кто вы?</span>
-                <div className="choice three">
+                <div className="choice">
                   <button type="button" className={kind === 'store' ? 'active' : ''} onClick={() => morph(() => setKind('store'))}>
                     <b>Торговая точка</b>
                     <span>Магазин или сеть: учёт товаров, касса, заказы у поставщиков</span>
@@ -370,18 +370,8 @@ export function AuthPage() {
                     <b>Поставщик</b>
                     <span>Производитель или дистрибьютор: каталог, склад и заказы магазинов</span>
                   </button>
-                  <button type="button" className={kind === 'branch' ? 'active' : ''} onClick={() => morph(() => setKind('branch'))}>
-                    <b>Филиал поставщика</b>
-                    <span>Склад или филиал: свой кабинет с заказами, остатками и сотрудниками</span>
-                  </button>
                 </div>
               </div>
-              {employee && (
-                <p className="hint">
-                  Компанию и свой филиал выберете на следующем шаге. Кабинет откроется, когда владелец компании одобрит заявку.
-                  Сотрудников филиала вы потом пригласите сами.
-                </p>
-              )}
               {kind === 'store' && (
                 <>
                   {/* аптек мало, а раздела для них ещё нет: это отметка, а не вопрос для каждого магазина */}
@@ -401,25 +391,21 @@ export function AuthPage() {
                 <span>Ваше имя</span>
                 <input value={fullName} onChange={(e) => setFullName(e.target.value)} required autoComplete="name" placeholder="Айгерим Сапарова" />
               </label>
-              {!employee && (
-                <>
-                  <label className="field">
-                    <span>{kind === 'store' ? 'Название торговой точки' : 'Название компании'}</span>
-                    <input value={name} onChange={(e) => setName(e.target.value)} required autoComplete="organization"
-                      placeholder={kind === 'store' ? 'ИП Иванов' : 'ТОО «Молочный завод»'} />
-                  </label>
-                  <div className="form-grid">
-                    <div className="field">
-                      <span>Город</span>
-                      <CitySelect value={city} onChange={setCity} aria-label="Город" />
-                    </div>
-                    <label className="field">
-                      <span>Телефон</span>
-                      <PhoneInput value={phone} onChange={setPhone} required autoComplete="tel" />
-                    </label>
-                  </div>
-                </>
-              )}
+              <label className="field">
+                <span>{kind === 'store' ? 'Название торговой точки' : 'Название компании'}</span>
+                <input value={name} onChange={(e) => setName(e.target.value)} required autoComplete="organization"
+                  placeholder={kind === 'store' ? 'ИП Иванов' : 'ТОО «Молочный завод»'} />
+              </label>
+              <div className="form-grid">
+                <div className="field">
+                  <span>Город</span>
+                  <CitySelect value={city} onChange={setCity} aria-label="Город" />
+                </div>
+                <label className="field">
+                  <span>Телефон</span>
+                  <PhoneInput value={phone} onChange={setPhone} required autoComplete="tel" />
+                </label>
+              </div>
             </>
           )}
           <label className="field">
@@ -478,21 +464,19 @@ export function AuthPage() {
                   </span>
                 )}
               </label>
-              {!employee && (
-                <div className="form-grid">
-                  <label className="field">
-                    <span>Откуда узнали о Sauda</span>
-                    <select value={source} onChange={(e) => setSource(e.target.value)}>
-                      <option value="">Не скажу</option>
-                      {SOURCES.map((s) => <option key={s} value={s}>{s}</option>)}
-                    </select>
-                  </label>
-                  <label className="field">
-                    <span>Промокод</span>
-                    <input value={promo} onChange={(e) => setPromo(e.target.value)} placeholder="если есть" autoComplete="off" maxLength={32} />
-                  </label>
-                </div>
-              )}
+              <div className="form-grid">
+                <label className="field">
+                  <span>Откуда узнали о Sauda</span>
+                  <select value={source} onChange={(e) => setSource(e.target.value)}>
+                    <option value="">Не скажу</option>
+                    {SOURCES.map((s) => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </label>
+                <label className="field">
+                  <span>Промокод</span>
+                  <input value={promo} onChange={(e) => setPromo(e.target.value)} placeholder="если есть" autoComplete="off" maxLength={32} />
+                </label>
+              </div>
               <label className="check-row">
                 <input type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} />
                 <span>
