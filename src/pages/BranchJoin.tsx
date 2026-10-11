@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent, type ReactNode } from 'react';
+import { useMemo, useState, type FormEvent } from 'react';
 import { cityLabel, useCities } from '../lib/cities';
 import { formatPhone } from '../lib/format';
 import { useQuery } from '../lib/hooks';
@@ -20,7 +20,7 @@ interface MyRequest {
  * Подключение филиала к компании: сотрудник выбирает компанию и филиал (или описывает новый) и отправляет заявку.
  * Кабинет филиала откроется, когда владелец компании её одобрит.
  */
-export function BranchJoin({ onBack, terms }: { onBack: () => void; terms?: { ok: boolean; accept: () => Promise<void>; box: ReactNode } }) {
+export function BranchJoin() {
   const { user, reload, signOut } = useSession();
   const cities = useCities();
   const meta = (user?.user_metadata ?? {}) as { phone?: string };
@@ -59,10 +59,8 @@ export function BranchJoin({ onBack, terms }: { onBack: () => void; terms?: { ok
     setError(null);
     if (!company) return setError('Выберите компанию');
     if (!branch && (!name.trim() || city == null)) return setError('Выберите свой филиал из списка или укажите название и город нового');
-    if (terms && !terms.ok) return setError('Отметьте согласие с офертой и политикой конфиденциальности');
     setBusy(true);
     try {
-      await terms?.accept();
       await q(db.rpc('request_branch', {
         p_company: company.id, p_branch: branch || undefined, p_name: name.trim(), p_city: city ?? undefined,
         p_address: address.trim(), p_phone: formatPhone(phone), p_comment: comment.trim(),
@@ -174,10 +172,8 @@ export function BranchJoin({ onBack, terms }: { onBack: () => void; terms?: { ok
             </label>
           </>
         )}
-        {terms?.box}
         {error && <p className="error-text">{error}</p>}
         <button className="btn primary large" disabled={busy || !company}>Отправить заявку</button>
-        <button type="button" className="btn" onClick={onBack}>Назад</button>
         <button type="button" className="btn ghost" onClick={signOut}>Выйти из {user?.email}</button>
       </form>
     </div>

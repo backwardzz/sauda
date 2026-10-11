@@ -177,7 +177,7 @@ export function Users() {
           <div className="section-title" style={{ marginTop: 22 }}>Ожидают регистрации</div>
           <DataTable id="invites" columns={inviteColumns} rows={invites.data ?? []} rowKey={(i) => i.id} />
           <p className="hint" style={{ marginTop: 8 }}>
-            Сотрудник получит доступ, когда зарегистрируется или войдёт с этой почтой. Отправьте ему ссылку на сайт.
+            Отправьте сотруднику ссылку на сайт: при первом входе с этой почтой он придумает пароль и сразу попадёт сюда.
           </p>
         </>
       )}

@@ -44,8 +44,8 @@ export function PasswordHint({ value }: { value: string }) {
 }
 
 type Mode = 'login' | 'register' | 'reset';
-/** employee — человек не заводит организацию: его пригласили, или он попросит доступ к филиалу на следующем шаге. */
-type Kind = 'store' | 'company' | 'employee';
+/** branch — филиал поставщика: организацию не заводит, а на следующем шаге отправляет заявку владельцу компании. */
+type Kind = 'store' | 'company' | 'branch';
 
 const SOURCES = ['Знакомые или коллеги', 'Instagram', 'TikTok', 'WhatsApp или Telegram', 'Поиск в интернете', 'Представитель компании-поставщика', 'Другое'];
 
@@ -91,7 +91,7 @@ export function AuthPage() {
   const needCaptcha = Boolean(CAPTCHA_KEY) && !captcha;
   // токен капчи одноразовый: после любого запроса проверка проходит заново
   const nextCaptcha = () => { setCaptcha(null); setRound((r) => r + 1); };
-  // Карточка плавно меняет размер, когда меняется её содержимое (вход ↔ регистрация, «по приглашению» прячет поля):
+  // Карточка плавно меняет размер, когда меняется её содержимое (вход ↔ регистрация, филиал прячет поля):
   // перед изменением запоминается размер, после отрисовки карточка анимируется от старого размера к новому.
   const card = useRef<HTMLFormElement>(null);
   const sizeBefore = useRef<{ w: number; h: number } | null>(null);
@@ -120,8 +120,26 @@ export function AuthPage() {
     if (inner && hold) inner.animate([{ ...hold, opacity: 0 }, { ...hold, opacity: 1, offset: 0.6 }, { ...hold, opacity: 1 }], timing);
   });
   const go = (m: Mode) => morph(() => { setMode(m); setError(null); setNotice(null); });
-  // сотрудник по приглашению и филиал компании не заводят свою организацию: только имя, почта и пароль
-  const employee = kind === 'employee';
+  // филиал не заводит свою организацию: только имя, почта и пароль
+  const employee = kind === 'branch';
+  // Первый вход по приглашению: на почту есть приглашение, а аккаунта ещё нет — форма входа просит придумать пароль.
+  const [invited, setInvited] = useState(false);
+  const firstLogin = mode === 'login' && invited;
+  useEffect(() => {
+    const address = email.trim();
+    if (mode !== 'login' || !/^\S+@\S+\.\S+$/.test(address)) {
+      if (invited) morph(() => setInvited(false));
+      return;
+    }
+    let stale = false;
+    const timer = setTimeout(async () => {
+      const { data } = await db.rpc('invite_pending', { p_email: address });
+      if (!stale && (data === true) !== invited) morph(() => setInvited(data === true));
+    }, 400);
+    return () => { stale = true; clearTimeout(timer); };
+    // следим только за почтой и вкладкой
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [email, mode]);
 
   const sendRecovery = (to: string) =>
     db.auth.resetPasswordForEmail(to, { redirectTo: confirmUrl(), captchaToken });
@@ -178,6 +196,11 @@ export function AuthPage() {
     e.preventDefault();
     setError(null);
     setNotice(null);
+    if (firstLogin) {
+      const weak = passwordChecks(password).find((c) => !c.ok);
+      if (weak) return setError(`Пароль: ${weak.text}`);
+      if (password !== password2) return setError('Пароли не совпадают');
+    }
     if (mode === 'register') {
       if (!employee && city == null) return setError('Выберите город');
       const weak = passwordChecks(password).find((c) => !c.ok);
@@ -188,7 +211,25 @@ export function AuthPage() {
     if (needCaptcha) return setError('Подтвердите, что вы не робот');
     setBusy(true);
     try {
-      if (mode === 'login') {
+      if (firstLogin) {
+        // аккаунт создаётся с придуманным паролем; в организацию владельца человек попадает по приглашению сразу после входа
+        const { data, error } = await db.auth.signUp({
+          email: email.trim(),
+          password,
+          options: {
+            emailRedirectTo: confirmUrl(),
+            captchaToken,
+            data: { account_kind: 'employee', terms_version: TERMS_VERSION, terms_accepted_at: new Date().toISOString() },
+          },
+        });
+        if (error) throw error;
+        if (!data.session) {
+          setSentTo({ email: email.trim(), type: 'signup' });
+          setCode('');
+          setPassword('');
+          setPassword2('');
+        }
+      } else if (mode === 'login') {
         const { error } = await db.auth.signInWithPassword({ email: loginEmail(email.trim()), password, options: { captchaToken } });
         if (error) throw error;
       } else if (mode === 'reset') {
@@ -314,33 +355,32 @@ export function AuthPage() {
           </div>
           <div className="segmented">
             <button type="button" className={mode === 'login' ? 'active' : ''} onClick={() => go('login')}>Вход</button>
-            <button type="button" className={mode === 'register' && !employee ? 'active' : ''}
-              onClick={() => { go('register'); if (employee) setKind('store'); }}>Регистрация</button>
-            {/* приглашённый не заводит организацию: отдельная вкладка, чтобы не читать вопросы для владельцев */}
-            <button type="button" className={mode === 'register' && employee ? 'active' : ''}
-              onClick={() => { go('register'); setKind('employee'); }}>Меня пригласили</button>
+            <button type="button" className={mode === 'register' ? 'active' : ''} onClick={() => go('register')}>Регистрация</button>
           </div>
           {mode === 'register' && (
             <>
-              {employee ? (
-                <p className="hint">
-                  Укажите почту, на которую владелец отправил приглашение: после входа вы сразу попадёте в его магазин или компанию.
-                  Если вы из филиала или склада компании и приглашения нет — на следующем шаге отправите заявку владельцу.
-                </p>
-              ) : (
-                <div className="field">
-                  <span>Кто вы?</span>
-                  <div className="choice">
-                    <button type="button" className={kind === 'store' ? 'active' : ''} onClick={() => morph(() => setKind('store'))}>
-                      <b>Торговая точка</b>
-                      <span>Магазин или сеть: учёт товаров, касса, заказы у поставщиков</span>
-                    </button>
-                    <button type="button" className={kind === 'company' ? 'active' : ''} onClick={() => morph(() => setKind('company'))}>
-                      <b>Поставщик</b>
-                      <span>Производитель или дистрибьютор: каталог, склад и заказы магазинов</span>
-                    </button>
-                  </div>
+              <div className="field">
+                <span>Кто вы?</span>
+                <div className="choice three">
+                  <button type="button" className={kind === 'store' ? 'active' : ''} onClick={() => morph(() => setKind('store'))}>
+                    <b>Торговая точка</b>
+                    <span>Магазин или сеть: учёт товаров, касса, заказы у поставщиков</span>
+                  </button>
+                  <button type="button" className={kind === 'company' ? 'active' : ''} onClick={() => morph(() => setKind('company'))}>
+                    <b>Поставщик</b>
+                    <span>Производитель или дистрибьютор: каталог, склад и заказы магазинов</span>
+                  </button>
+                  <button type="button" className={kind === 'branch' ? 'active' : ''} onClick={() => morph(() => setKind('branch'))}>
+                    <b>Филиал поставщика</b>
+                    <span>Склад или филиал: свой кабинет с заказами, остатками и сотрудниками</span>
+                  </button>
                 </div>
+              </div>
+              {employee && (
+                <p className="hint">
+                  Компанию и свой филиал выберете на следующем шаге. Кабинет откроется, когда владелец компании одобрит заявку.
+                  Сотрудников филиала вы потом пригласите сами.
+                </p>
               )}
               {kind === 'store' && (
                 <>
@@ -399,12 +439,30 @@ export function AuthPage() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
-              minLength={mode === 'login' ? 6 : PASSWORD_MIN}
-              autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+              minLength={mode === 'login' && !firstLogin ? 6 : PASSWORD_MIN}
+              autoComplete={mode === 'login' && !firstLogin ? 'current-password' : 'new-password'}
             />
-            {mode === 'register' && <PasswordHint value={password} />}
+            {(mode === 'register' || firstLogin) && <PasswordHint value={password} />}
           </label>
-          {mode === 'login' && (
+          {firstLogin && (
+            <>
+              <label className="field">
+                <span>Пароль ещё раз</span>
+                <input type="password" value={password2} onChange={(e) => setPassword2(e.target.value)} required autoComplete="new-password" />
+                {password2 && (
+                  <span className={`hint ${password2 === password ? 'ok-text' : 'error-text'}`}>
+                    {password2 === password ? '✓ пароли совпадают' : 'пароли не совпадают'}
+                  </span>
+                )}
+              </label>
+              <p className="hint">
+                Вас пригласили, и это ваш первый вход: придумайте пароль — с ним вы будете входить дальше.
+                Продолжая, вы принимаете <Link to="/terms" target="_blank">условия оферты</Link> и{' '}
+                <Link to="/privacy" target="_blank">политику конфиденциальности</Link>.
+              </p>
+            </>
+          )}
+          {mode === 'login' && !firstLogin && (
             <div className="auth-links" style={{ justifyContent: 'flex-end', marginTop: -4 }}>
               <button type="button" className="link-btn" onClick={() => go('reset')}>Забыли пароль?</button>
             </div>
@@ -448,9 +506,9 @@ export function AuthPage() {
           {error && <p className="error-text">{error}</p>}
           {notice && <p className="ok-text">{notice}</p>}
           <button className="btn primary large" disabled={busy}>
-            {mode === 'login' ? 'Войти' : 'Создать аккаунт'}
+            {firstLogin ? 'Сохранить пароль и войти' : mode === 'login' ? 'Войти' : 'Создать аккаунт'}
           </button>
-          {mode === 'login' && (
+          {mode === 'login' && !firstLogin && (
             <>
               <div className="auth-or"><span>или</span></div>
               <button type="button" className="btn large" disabled={busy} onClick={demo}>Попробовать без регистрации</button>
