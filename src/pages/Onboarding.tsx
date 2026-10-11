@@ -106,7 +106,7 @@ export function Onboarding() {
     </label>
   );
 
-  if (auto) return <div className="auth muted">{isStore ? 'Создаём магазин…' : 'Создаём кабинет компании…'}</div>;
+  if (auto) return <div className="auth muted">{isStore ? 'Создаём кабинет торговой точки…' : 'Создаём кабинет компании…'}</div>;
 
   if (asBranch) {
     return <BranchJoin onBack={() => setAsBranch(false)} terms={{ ok: !needTerms || agree, accept: acceptTerms, box: termsBox }} />;
@@ -126,7 +126,7 @@ export function Onboarding() {
             <b>Приглашение для {user?.email} не найдено</b>
             <span>
               Попросите владельца пригласить именно этот адрес в разделе «Сотрудники», затем нажмите «Проверить снова».
-              Если вы из филиала или склада компании, отправьте владельцу заявку. Или заведите свой магазин ниже.
+              Если вы из филиала или склада компании, отправьте владельцу заявку. Или заведите свою торговую точку ниже.
             </span>
             <button type="button" className="btn" onClick={() => void reload()}>Проверить снова</button>
             <button type="button" className="btn" onClick={() => setAsBranch(true)}>Я из филиала или склада компании</button>
@@ -167,7 +167,7 @@ export function Onboarding() {
         )}
         <div className="form-grid">
           <label className={`field ${isStore ? '' : 'wide'}`}>
-            <span>{isStore ? 'Название магазина или сети' : 'Название компании'} <b>*</b></span>
+            <span>{isStore ? 'Название торговой точки или сети' : 'Название компании'} <b>*</b></span>
             <input value={name} onChange={(e) => setName(e.target.value)} required autoFocus
               placeholder={!isStore ? 'ТОО «Молочный завод»' : business === 'pharmacy' ? 'ТОО «Аптека Здоровье»' : 'ИП Иванов'} />
           </label>
@@ -182,7 +182,7 @@ export function Onboarding() {
             <CitySelect value={city} onChange={setCity} aria-label="Город" />
           </div>
           <label className="field">
-            <span>{isStore ? 'Адрес магазина' : 'Адрес главного офиса'}</span>
+            <span>{isStore ? 'Адрес торговой точки' : 'Адрес главного офиса'}</span>
             <input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="пр. Абая, 10" autoComplete="street-address" />
           </label>
           <label className="field">
@@ -204,7 +204,7 @@ export function Onboarding() {
         {isStore && business === 'grocery' && (
           <label className="check-row">
             <input type="checkbox" checked={fresh} onChange={(e) => setFresh(e.target.checked)} />
-            <span>У меня новый магазин — предложить пакет ходовых товаров с ценами</span>
+            <span>У меня новая торговая точка — предложить пакет ходовых товаров с ценами</span>
           </label>
         )}
         {!isStore && (

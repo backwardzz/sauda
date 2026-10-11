@@ -310,7 +310,7 @@ export function AuthPage() {
         <div className="stack auth-inner">
           <div>
             <div className="brand"><span className="brand-mark">S</span>Sauda</div>
-            <p className="muted">Учёт и касса для магазинов, каталог, склад и заказы для компаний</p>
+            <p className="muted">Учёт и касса для торговых точек, каталог, склад и заказы для поставщиков</p>
           </div>
           <div className="segmented">
             <button type="button" className={mode === 'login' ? 'active' : ''} onClick={() => go('login')}>Вход</button>
@@ -364,7 +364,7 @@ export function AuthPage() {
               {!employee && (
                 <>
                   <label className="field">
-                    <span>{kind === 'store' ? 'Название магазина' : 'Название компании'}</span>
+                    <span>{kind === 'store' ? 'Название торговой точки' : 'Название компании'}</span>
                     <input value={name} onChange={(e) => setName(e.target.value)} required autoComplete="organization"
                       placeholder={kind === 'store' ? 'ИП Иванов' : 'ТОО «Молочный завод»'} />
                   </label>
