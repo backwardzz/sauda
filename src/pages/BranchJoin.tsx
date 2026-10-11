@@ -177,7 +177,7 @@ export function BranchJoin({ onBack, terms }: { onBack: () => void; terms?: { ok
         {terms?.box}
         {error && <p className="error-text">{error}</p>}
         <button className="btn primary large" disabled={busy || !company}>Отправить заявку</button>
-        <button type="button" className="btn" onClick={onBack}>Я завожу свою торговую точку или я поставщик</button>
+        <button type="button" className="btn" onClick={onBack}>Назад</button>
         <button type="button" className="btn ghost" onClick={signOut}>Выйти из {user?.email}</button>
       </form>
     </div>

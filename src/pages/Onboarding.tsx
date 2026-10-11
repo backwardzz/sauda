@@ -5,13 +5,17 @@ import { db, errorText, q } from '../lib/supabase';
 import { useSession } from '../lib/session';
 import { TERMS_VERSION } from './Auth';
 import { BranchJoin } from './BranchJoin';
-import { COMPANY_TYPE, type CompanyType, type OrgKind } from '../lib/types';
+import type { OrgKind } from '../lib/types';
 import { CitySelect } from '../ui/CitySelect';
 import { PhoneInput } from '../ui/PhoneInput';
 
+/** auto — организация создаётся сама; lost — приглашение не найдено; form — те же вопросы, что в регистрации; branch — заявка филиала. */
+type View = 'auto' | 'lost' | 'form' | 'branch';
+
 /**
  * Первый вход: у пользователя ещё нет магазина или компании и нет приглашений.
- * После обычной регистрации организация создаётся сама из данных формы; экран видят только те, кого форма не спрашивала.
+ * После обычной регистрации организация создаётся сама из данных формы, и человек ничего здесь не видит.
+ * Приглашённому без приглашения показывается короткий экран с выбором, что делать дальше.
  */
 export function Onboarding() {
   const { user, reload, signOut } = useSession();
@@ -20,35 +24,28 @@ export function Onboarding() {
     account_kind?: string; city_id?: number; phone?: string; full_name?: string; name?: string; org_name?: string;
     business?: string; terms_version?: string;
   };
-  // сотрудник, для которого не нашлось приглашения: подсказка вверху, но свой магазин завести тоже можно
+  // зарегистрировался во вкладке «Меня пригласили», а приглашения на эту почту нет
   const lostEmployee = meta.account_kind === 'employee';
   // вход через Google проходит без формы регистрации: согласие спрашивается здесь
   const needTerms = meta.terms_version !== TERMS_VERSION;
   const [agree, setAgree] = useState(false);
-  // филиал компании не заводит свою организацию, а отправляет заявку владельцу
-  const [asBranch, setAsBranch] = useState(meta.account_kind === 'branch');
-  // роль, название, город и телефон указаны при регистрации; здесь их ещё можно поменять
   const [kind, setKind] = useState<OrgKind>(meta.account_kind === 'company' || meta.account_kind === 'supplier' ? 'company' : 'store');
   const [business, setBusiness] = useState<'grocery' | 'pharmacy'>(meta.business === 'pharmacy' ? 'pharmacy' : 'grocery');
-  const [companyType, setCompanyType] = useState<CompanyType>('distributor');
-  const [fresh, setFresh] = useState(true);
   const [name, setName] = useState(meta.org_name ?? '');
-  const [storeName, setStoreName] = useState('');
   const [city, setCity] = useState<number | null>(typeof meta.city_id === 'number' ? meta.city_id : null);
-  const [address, setAddress] = useState('');
   const [phone, setPhone] = useState(meta.phone ?? '');
-  const [bin, setBin] = useState('');
-  const [description, setDescription] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [view, setView] = useState<View>(() => {
+    if (meta.account_kind === 'branch') return 'branch';
+    if (lostEmployee) return 'lost';
+    const complete = (meta.account_kind === 'store' || meta.account_kind === 'company') && !!meta.org_name?.trim() && typeof meta.city_id === 'number';
+    return complete && !needTerms ? 'auto' : 'form';
+  });
+  const started = useRef(false);
 
   const isStore = kind === 'store';
-  // Всё нужное уже спросила форма регистрации: магазин или компания создаются сразу, без этого экрана.
-  // Экран остаётся тем, кого форма не спрашивала: вход через Google, сотрудник без приглашения, филиал.
-  const [auto, setAuto] = useState(
-    () => (meta.account_kind === 'store' || meta.account_kind === 'company') && !!meta.org_name?.trim() && typeof meta.city_id === 'number' && !needTerms,
-  );
-  const started = useRef(false);
+  const home: View = lostEmployee ? 'lost' : 'form';
 
   const acceptTerms = async () => {
     if (!needTerms) return;
@@ -56,31 +53,32 @@ export function Onboarding() {
     if (error) throw error;
   };
 
+  // адрес, БИН, тип и описание компании заполняются позже в профиле
   const create = async () => {
     setBusy(true);
     try {
       await acceptTerms();
       await q(db.rpc('create_org', {
-        p_name: name, p_store: storeName || name, p_kind: kind, p_business: business, p_city: city,
+        p_name: name, p_store: name, p_kind: kind, p_business: business, p_city: city,
         p_profile: {
-          phone: formatPhone(phone), address, bin: bin.replace(/\s/g, ''), email: user?.email ?? '', contact_name: meta.full_name ?? meta.name ?? '',
-          ...(isStore ? {} : { company_type: companyType, description }),
+          phone: formatPhone(phone), address: '', bin: '', email: user?.email ?? '', contact_name: meta.full_name ?? meta.name ?? '',
+          ...(isStore ? {} : { company_type: 'distributor', description: '' }),
         },
       }));
-      // новому магазину сразу предлагаются пакеты ходовых товаров с ценами компаний
-      if (isStore && business === 'grocery' && fresh) navigate('/catalog/starter');
+      // новой торговой точке сразу предлагаются пакеты ходовых товаров с ценами компаний
+      if (isStore && business === 'grocery') navigate('/catalog/starter');
       await reload();
     } catch (err) {
       setError(errorText(err));
       setBusy(false);
-      // не получилось создать автоматически: показываем форму с ошибкой, данные в ней уже подставлены
-      setAuto(false);
+      // не получилось создать автоматически: показываем вопросы с ошибкой, ответы в них уже подставлены
+      setView('form');
     }
   };
 
   useEffect(() => {
     // в режиме разработки эффект запускается дважды: вторая организация не нужна
-    if (!auto || started.current) return;
+    if (view !== 'auto' || started.current) return;
     started.current = true;
     void create();
     // запускается один раз при открытии
@@ -92,7 +90,6 @@ export function Onboarding() {
     setError(null);
     if (city == null) return setError('Выберите город');
     if (needTerms && !agree) return setError('Отметьте согласие с офертой и политикой конфиденциальности');
-    if (bin.trim() && !/^\d{12}$/.test(bin.replace(/\s/g, ''))) return setError('БИН или ИИН — это 12 цифр');
     void create();
   };
 
@@ -106,44 +103,54 @@ export function Onboarding() {
     </label>
   );
 
-  if (auto) return <div className="auth muted">{isStore ? 'Создаём кабинет торговой точки…' : 'Создаём кабинет компании…'}</div>;
+  if (view === 'auto') return <div className="auth muted">{isStore ? 'Создаём кабинет торговой точки…' : 'Создаём кабинет поставщика…'}</div>;
 
-  if (asBranch) {
-    return <BranchJoin onBack={() => setAsBranch(false)} terms={{ ok: !needTerms || agree, accept: acceptTerms, box: termsBox }} />;
+  if (view === 'branch') {
+    return <BranchJoin onBack={() => setView(home)} terms={{ ok: !needTerms || agree, accept: acceptTerms, box: termsBox }} />;
   }
 
+  if (view === 'lost') {
+    return (
+      <div className="auth">
+        <div className="auth-card stack">
+          <div className="brand"><span className="brand-mark">S</span>Sauda</div>
+          <h2>Приглашение не найдено</h2>
+          <p>
+            На почту <b>{user?.email}</b> приглашений нет. Попросите владельца пригласить именно этот адрес в разделе
+            «Сотрудники» и нажмите «Проверить снова».
+          </p>
+          <button type="button" className="btn primary large" disabled={busy}
+            onClick={async () => { setBusy(true); await reload(); setBusy(false); }}>
+            Проверить снова
+          </button>
+          <button type="button" className="btn" onClick={() => setView('branch')}>Я из филиала или склада компании</button>
+          <button type="button" className="btn" onClick={() => setView('form')}>Зарегистрировать свой бизнес</button>
+          <button type="button" className="btn ghost" onClick={signOut}>Выйти из {user?.email}</button>
+        </div>
+      </div>
+    );
+  }
+
+  // те же вопросы, что в форме регистрации: аккаунт уже есть, не хватает только данных организации
   return (
     <div className="auth">
       <form className="auth-card wide stack" onSubmit={submit}>
-        <div>
-          <h1>Расскажите о себе</h1>
-          <p className="muted">
-            Если вас пригласили в существующий магазин или компанию, войдите с той почтой, на которую пришло приглашение.
-          </p>
-        </div>
-        {lostEmployee && (
-          <div className="card pad warn-box stack">
-            <b>Приглашение для {user?.email} не найдено</b>
-            <span>
-              Попросите владельца пригласить именно этот адрес в разделе «Сотрудники», затем нажмите «Проверить снова».
-              Если вы из филиала или склада компании, отправьте владельцу заявку. Или заведите свою торговую точку ниже.
-            </span>
-            <button type="button" className="btn" onClick={() => void reload()}>Проверить снова</button>
-            <button type="button" className="btn" onClick={() => setAsBranch(true)}>Я из филиала или склада компании</button>
+        <div className="brand"><span className="brand-mark">S</span>Sauda</div>
+        <div className="field">
+          <span>Кто вы?</span>
+          <div className="choice">
+            <button type="button" className={isStore ? 'active' : ''} onClick={() => setKind('store')}>
+              <b>Торговая точка</b>
+              <span>Магазин или сеть: учёт товаров, касса, заказы у поставщиков</span>
+            </button>
+            <button type="button" className={!isStore ? 'active' : ''} onClick={() => setKind('company')}>
+              <b>Поставщик</b>
+              <span>Производитель или дистрибьютор: каталог, склад и заказы магазинов</span>
+            </button>
           </div>
-        )}
-        <div className="choice">
-          <button type="button" className={isStore ? 'active' : ''} onClick={() => setKind('store')}>
-            <b>Торговая точка</b>
-            <span>Магазин или сеть: учёт товаров, касса, отчёты, заказы у поставщиков</span>
-          </button>
-          <button type="button" className={!isStore ? 'active' : ''} onClick={() => setKind('company')}>
-            <b>Поставщик</b>
-            <span>Производитель или дистрибьютор: каталог, склад и заказы магазинов</span>
-          </button>
         </div>
-        {isStore ? (
-          <div className="field">
+        {isStore && (
+          <>
             <label className="check-row">
               <input type="checkbox" checked={business === 'pharmacy'} onChange={(e) => setBusiness(e.target.checked ? 'pharmacy' : 'grocery')} />
               <span>У меня аптека <span className="badge warn">скоро</span></span>
@@ -154,71 +161,30 @@ export function Onboarding() {
                 Зарегистрироваться можно уже сейчас — будут доступны обычный учёт товаров, касса и отчёты.
               </p>
             )}
-          </div>
-        ) : (
-          <div className="field">
-            <span>Тип компании</span>
-            <div className="segmented">
-              {(Object.keys(COMPANY_TYPE) as CompanyType[]).map((t) => (
-                <button type="button" key={t} className={companyType === t ? 'active' : ''} onClick={() => setCompanyType(t)}>{COMPANY_TYPE[t]}</button>
-              ))}
-            </div>
-          </div>
+          </>
         )}
+        <label className="field">
+          <span>{isStore ? 'Название торговой точки' : 'Название компании'}</span>
+          <input value={name} onChange={(e) => setName(e.target.value)} required autoFocus autoComplete="organization"
+            placeholder={isStore ? 'ИП Иванов' : 'ТОО «Молочный завод»'} />
+        </label>
         <div className="form-grid">
-          <label className={`field ${isStore ? '' : 'wide'}`}>
-            <span>{isStore ? 'Название торговой точки или сети' : 'Название компании'} <b>*</b></span>
-            <input value={name} onChange={(e) => setName(e.target.value)} required autoFocus
-              placeholder={!isStore ? 'ТОО «Молочный завод»' : business === 'pharmacy' ? 'ТОО «Аптека Здоровье»' : 'ИП Иванов'} />
-          </label>
-          {isStore && (
-            <label className="field">
-              <span>{business === 'pharmacy' ? 'Первая аптека' : 'Первая торговая точка'}</span>
-              <input value={storeName} onChange={(e) => setStoreName(e.target.value)} placeholder={business === 'pharmacy' ? 'Аптека на Абая' : 'Магазин на Абая'} />
-            </label>
-          )}
           <div className="field">
-            <span>Город <b>*</b></span>
+            <span>Город</span>
             <CitySelect value={city} onChange={setCity} aria-label="Город" />
           </div>
           <label className="field">
-            <span>{isStore ? 'Адрес торговой точки' : 'Адрес главного офиса'}</span>
-            <input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="пр. Абая, 10" autoComplete="street-address" />
-          </label>
-          <label className="field">
-            <span>Телефон <b>*</b></span>
+            <span>Телефон</span>
             <PhoneInput value={phone} onChange={setPhone} required autoComplete="tel" />
           </label>
-          <label className="field">
-            <span>БИН или ИИН</span>
-            <input value={bin} onChange={(e) => setBin(e.target.value)} inputMode="numeric" maxLength={14} placeholder="12 цифр, можно позже" />
-          </label>
-          {!isStore && (
-            <label className="field wide">
-              <span>Чем торгуете</span>
-              <textarea rows={2} value={description} onChange={(e) => setDescription(e.target.value)}
-                placeholder="Молочная продукция собственного производства, доставка по городу" />
-            </label>
-          )}
         </div>
-        {isStore && business === 'grocery' && (
-          <label className="check-row">
-            <input type="checkbox" checked={fresh} onChange={(e) => setFresh(e.target.checked)} />
-            <span>У меня новая торговая точка — предложить пакет ходовых товаров с ценами</span>
-          </label>
-        )}
-        {!isStore && (
-          <p className="hint">
-            В этом городе появится главный филиал компании. Остальные филиалы, логотип и условия доставки добавите в профиле.
-          </p>
-        )}
         {termsBox}
         {error && <p className="error-text">{error}</p>}
         <button className="btn primary large" disabled={busy}>Продолжить</button>
-        <button type="button" className="btn" onClick={() => setAsBranch(true)}>Я из филиала или склада компании</button>
-        <button type="button" className="btn ghost" onClick={signOut}>
-          Выйти из {user?.email}
-        </button>
+        {lostEmployee
+          ? <button type="button" className="btn" onClick={() => setView('lost')}>Назад</button>
+          : <button type="button" className="btn" onClick={() => setView('branch')}>Я из филиала или склада компании</button>}
+        <button type="button" className="btn ghost" onClick={signOut}>Выйти из {user?.email}</button>
       </form>
     </div>
   );
