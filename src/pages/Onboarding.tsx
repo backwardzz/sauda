@@ -144,15 +144,10 @@ export function Onboarding() {
         </div>
         {isStore ? (
           <div className="field">
-            <span>Чем торгуете</span>
-            <div className="choice small">
-              <button type="button" className={business === 'grocery' ? 'active' : ''} onClick={() => setBusiness('grocery')}>
-                <b>Продукты и товары для дома</b>
-              </button>
-              <button type="button" className={business === 'pharmacy' ? 'active' : ''} onClick={() => setBusiness('pharmacy')}>
-                <b>Аптека <span className="badge warn">скоро</span></b>
-              </button>
-            </div>
+            <label className="check-row">
+              <input type="checkbox" checked={business === 'pharmacy'} onChange={(e) => setBusiness(e.target.checked ? 'pharmacy' : 'grocery')} />
+              <span>У меня аптека <span className="badge warn">скоро</span></span>
+            </label>
             {business === 'pharmacy' && (
               <p className="hint">
                 Раздел для аптек в разработке: справочника лекарств, учёта серий и сроков годности пока нет.
