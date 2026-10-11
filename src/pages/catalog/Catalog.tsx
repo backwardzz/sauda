@@ -11,6 +11,7 @@ import { Pager } from '../../ui/DataTable';
 import { CompanyAvatar, VerifiedBadge } from '../../ui/CompanyAvatar';
 import { Icon } from '../../ui/Icon';
 import { toast } from '../../ui/toast';
+import { useAction } from '../../ui/useAction';
 
 interface CategoryRow {
   category: string;
@@ -68,7 +69,7 @@ function CatalogList() {
   const [picked, setPicked] = useState<Set<string>>(new Set());
   /** штрихкод → выбранное предложение, если магазин предпочёл не самое дешёвое */
   const [chosen, setChosen] = useState<Record<string, string>>({});
-  const [busy, setBusy] = useState(false);
+  const [busy, run] = useAction();
 
   if (useChanged([term, category, sub, brand, onlyNew, onlyOffers, pageSize]) && page !== 0) setPage(0);
   // при поиске и отборе «с ценами» ищем по всей категории, минуя карточки производителей
@@ -136,8 +137,7 @@ function CatalogList() {
   };
 
   const add = async (ids: string[]) => {
-    setBusy(true);
-    try {
+    await run(async () => {
       // закупочная цена берётся из выбранного предложения компании, если товар сейчас на странице
       const prices = rows.filter((r) => ids.includes(r.id)).flatMap((r) => {
         const o = offerOf(r);
@@ -155,11 +155,7 @@ function CatalogList() {
         return next;
       });
       list.reload();
-    } catch (e) {
-      toast.error(e);
-    } finally {
-      setBusy(false);
-    }
+    });
   };
 
   const select = (c: string | null, s: string | null = null) => {

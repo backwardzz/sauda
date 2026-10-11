@@ -7,6 +7,7 @@ import { DataTable, type Column } from '../../ui/DataTable';
 import { Icon } from '../../ui/Icon';
 import { Modal } from '../../ui/Modal';
 import { toast } from '../../ui/toast';
+import { useAction } from '../../ui/useAction';
 
 const META = {
   customer: { title: 'Покупатели', one: 'Покупатель', empty: 'Покупателей пока нет. Добавьте постоянных клиентов, чтобы видеть их покупки в отчётах.' },
@@ -19,7 +20,7 @@ export function Contractors({ kind }: { kind: Contractor['kind'] }) {
   const [edit, setEdit] = useState<Contractor | 'new' | null>(null);
   const [form, setForm] = useState({ name: '', phone: '', comment: '' });
   const [search, setSearch] = useState('');
-  const [busy, setBusy] = useState(false);
+  const [busy, run] = useAction();
   const meta = META[kind];
 
   const open = (c: Contractor | 'new') => {
@@ -29,32 +30,22 @@ export function Contractors({ kind }: { kind: Contractor['kind'] }) {
 
   const save = async () => {
     if (!form.name.trim()) return toast.error('Укажите название');
-    setBusy(true);
-    try {
+    await run(async () => {
       const row = { org_id: org.id, kind, name: form.name.trim(), phone: form.phone.trim(), comment: form.comment.trim() };
       if (edit === 'new') await q(db.from('contractors').insert(row));
       else if (edit) await q(db.from('contractors').update(row).eq('id', edit.id));
       setEdit(null);
       list.reload();
-    } catch (e) {
-      toast.error(e);
-    } finally {
-      setBusy(false);
-    }
+    });
   };
 
   const remove = async () => {
     if (!edit || edit === 'new') return;
-    setBusy(true);
-    try {
+    await run(async () => {
       await q(db.from('contractors').delete().eq('id', edit.id));
       setEdit(null);
       list.reload();
-    } catch (e) {
-      toast.error(e);
-    } finally {
-      setBusy(false);
-    }
+    });
   };
 
   const term = search.trim().toLowerCase();

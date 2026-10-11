@@ -11,6 +11,7 @@ import { Icon } from '../../ui/Icon';
 import { Confirm, Modal } from '../../ui/Modal';
 import { PhoneLink } from '../../ui/PhoneLink';
 import { toast } from '../../ui/toast';
+import { useAction } from '../../ui/useAction';
 
 const STEPS = ['new', 'confirmed', 'shipped', 'received'] as const;
 
@@ -18,7 +19,7 @@ export function OrderView() {
   const { id = '' } = useParams();
   const navigate = useNavigate();
   const { org, canManage, branches, store } = useOrg();
-  const [busy, setBusy] = useState(false);
+  const [busy, act] = useAction();
   const [confirmCancel, setConfirmCancel] = useState(false);
   // подтверждение и отгрузка необратимы, поэтому сначала спрашиваем
   const [ask, setAsk] = useState<'confirm' | 'ship' | null>(null);
@@ -59,19 +60,14 @@ export function OrderView() {
   const short = items.filter((i) => have(i) !== undefined && have(i)! < shipQty(i));
 
   const run = async (fn: () => Promise<unknown>, ok: string, after?: (r: unknown) => void) => {
-    setBusy(true);
-    try {
+    await act(async () => {
       const r = await fn();
       toast.ok(ok);
       setConfirmCancel(false);
       setAsk(null);
       if (after) after(r);
       else data.reload();
-    } catch (e) {
-      toast.error(e);
-    } finally {
-      setBusy(false);
-    }
+    });
   };
   const status = (s: string, extra: Record<string, unknown> = {}) => q(db.rpc('set_order_status', { p_order: o.id, p_status: s, ...extra }));
 

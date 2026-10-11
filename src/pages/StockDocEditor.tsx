@@ -12,6 +12,7 @@ import { Icon } from '../ui/Icon';
 import { Confirm, Modal } from '../ui/Modal';
 import { ProductSearch } from '../ui/ProductSearch';
 import { toast } from '../ui/toast';
+import { useAction } from '../ui/useAction';
 
 const VISIBLE = 300;
 // пока строки грузятся — один и тот же пустой список, чтобы фильтры ниже не пересчитывались на каждом рендере
@@ -42,7 +43,7 @@ export function StockDocEditor() {
   const [search, setSearch] = useState('');
   const [onlyDiff, setOnlyDiff] = useState(false);
   const [bump, setBump] = useState(0);
-  const [busy, setBusy] = useState(false);
+  const [busy, run] = useAction();
   const [confirm, setConfirm] = useState<'post' | 'delete' | null>(null);
   const [zeroMissing, setZeroMissing] = useState(false);
   const [payAmount, setPayAmount] = useState('');
@@ -171,46 +172,33 @@ export function StockDocEditor() {
   };
 
   const post = async () => {
-    setBusy(true);
-    try {
+    const done = await run(async () => {
       await q(db.rpc('post_stock_doc_draft', { p_doc: d.id, p_zero_missing: validKind === 'inventory' && zeroMissing }));
       toast.ok(meta.posted);
       back();
-    } catch (e) {
-      toast.error(e);
-      setBusy(false);
-      setConfirm(null);
-    }
+    }, { keepBusy: true });
+    if (!done) setConfirm(null);
   };
 
   const removeDoc = async () => {
-    setBusy(true);
-    try {
+    const done = await run(async () => {
       await q(db.rpc('delete_stock_doc', { p_doc: d.id }));
       toast.ok('Черновик удалён');
       back();
-    } catch (e) {
-      toast.error(e);
-      setBusy(false);
-      setConfirm(null);
-    }
+    }, { keepBusy: true });
+    if (!done) setConfirm(null);
   };
 
   const pay = async () => {
     const amount = payAmount.trim() === '' ? debt : parseNum(payAmount);
     if (amount <= 0) return toast.error('Укажите сумму');
-    setBusy(true);
-    try {
+    await run(async () => {
       await q(db.rpc('pay_supply', { p_doc: d.id, p_amount: amount, p_comment: payComment.trim() }));
       toast.ok('Платёж записан');
       setPayAmount('');
       setPayComment('');
       doc.reload();
-    } catch (e) {
-      toast.error(e);
-    } finally {
-      setBusy(false);
-    }
+    });
   };
 
   const download = () => {

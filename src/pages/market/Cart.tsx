@@ -10,6 +10,7 @@ import { fullName } from '../../lib/variants';
 import { Icon } from '../../ui/Icon';
 import { ProductImage } from '../../ui/ProductImage';
 import { toast } from '../../ui/toast';
+import { useAction } from '../../ui/useAction';
 
 /** Корзина магазина: товары из каталога, со страниц компаний и из пакетов — по одному заказу на компанию. */
 export function CartPage() {
@@ -17,7 +18,7 @@ export function CartPage() {
   const navigate = useNavigate();
   const { carts, setQty, clear } = useCarts(store.id);
   const [comments, setComments] = useState<Record<string, string>>({});
-  const [busy, setBusy] = useState(false);
+  const [busy, run] = useAction();
 
   const ids = Object.values(carts).flatMap((c) => Object.keys(c)).sort();
   const offers = useQuery(() => loadOffers(store.id, { variants: ids }), [store.id, ids.join(',')]);
@@ -46,22 +47,19 @@ export function CartPage() {
   };
 
   const submit = async (list: typeof groups) => {
-    setBusy(true);
     let done = 0;
     let last = '';
-    try {
+    const sent = await run(async () => {
       for (const g of list) {
         last = await order(g);
         done++;
       }
       toast.ok(done === 1 ? 'Заказ отправлен компании' : `Отправлено заказов: ${done}`);
       navigate(done === 1 ? `/orders/${last}` : '/orders');
-    } catch (e) {
-      toast.error(e);
+    });
+    if (!sent) {
       if (done) toast.ok(`Отправлено заказов: ${done}. Остальные остались в корзине.`);
       offers.reload();
-    } finally {
-      setBusy(false);
     }
   };
 

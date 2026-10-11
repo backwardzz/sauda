@@ -8,6 +8,7 @@ import { DataTable, type Column } from '../../ui/DataTable';
 import { Icon } from '../../ui/Icon';
 import { Confirm, Modal } from '../../ui/Modal';
 import { toast } from '../../ui/toast';
+import { useAction } from '../../ui/useAction';
 
 interface Member {
   user_id: string;
@@ -56,7 +57,7 @@ export function Users() {
   const [inviteRole, setInviteRole] = useState<Role>('cashier');
   const [inviteBranch, setInviteBranch] = useState('');
   const [removing, setRemoving] = useState<Member | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [busy, run] = useAction();
 
   const members = useQuery(async () => {
     const [rows, profiles] = await Promise.all([
@@ -77,17 +78,12 @@ export function Users() {
   );
 
   const act = async (fn: () => Promise<unknown>, ok: string) => {
-    setBusy(true);
-    try {
+    await run(async () => {
       await fn();
       toast.ok(ok);
       members.reload();
       invites.reload();
-    } catch (e) {
-      toast.error(e);
-    } finally {
-      setBusy(false);
-    }
+    });
   };
 
   const invite = () => {

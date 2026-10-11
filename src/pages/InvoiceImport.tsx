@@ -8,6 +8,7 @@ import { useWorkspace } from '../lib/session';
 import { db, q } from '../lib/supabase';
 import type { Contractor, Product } from '../lib/types';
 import { toast } from '../ui/toast';
+import { useAction } from '../ui/useAction';
 
 const NEW = '__new__';
 
@@ -35,7 +36,7 @@ export function InvoiceImport() {
   const suppliers = useContractors(org.id, 'supplier');
   const [supplier, setSupplier] = useState<string | null>(null);
   const [createMissing, setCreateMissing] = useState(true);
-  const [busy, setBusy] = useState(false);
+  const [busy, run] = useAction();
 
   const parsed = useMemo(() => {
     try {
@@ -70,8 +71,7 @@ export function InvoiceImport() {
 
   const create = async () => {
     if (!chosen) return toast.error('Выберите поставщика');
-    setBusy(true);
-    try {
+    await run(async () => {
       let supplierId = chosen;
       if (chosen === NEW) {
         supplierId = (await q<Contractor>(
@@ -103,10 +103,7 @@ export function InvoiceImport() {
       }
       toast.ok(`Черновик приёмки создан: товаров ${lines.size}. Проверьте и проведите.`);
       navigate(`/docs/supply/${doc}`, { replace: true });
-    } catch (e) {
-      toast.error(e);
-      setBusy(false);
-    }
+    }, { keepBusy: true });
   };
 
   const willAdd = invoice.items.length - (createMissing ? 0 : missing.length);

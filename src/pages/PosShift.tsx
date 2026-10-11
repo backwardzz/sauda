@@ -6,21 +6,18 @@ import { db, q } from '../lib/supabase';
 import type { Register, Sale, Shift } from '../lib/types';
 import { Modal } from '../ui/Modal';
 import { toast } from '../ui/toast';
+import { useAction } from '../ui/useAction';
 
 /** Экран перед началом работы: на кассе нет открытой смены. */
 export function OpenShift({ register, currency, onOpened }: { register: Register; currency: string; onOpened: () => void }) {
   const [cash, setCash] = useState('');
-  const [busy, setBusy] = useState(false);
+  const [busy, run] = useAction();
 
   const open = async () => {
-    setBusy(true);
-    try {
+    await run(async () => {
       await q(db.rpc('open_shift', { p_register: register.id, p_opening_cash: parseNum(cash) }));
       onOpened();
-    } catch (e) {
-      toast.error(e);
-      setBusy(false);
-    }
+    }, { keepBusy: true });
   };
 
   return (
@@ -45,19 +42,15 @@ export function CashOpModal({ shift, currency, onClose }: { shift: Shift; curren
   const [kind, setKind] = useState<'in' | 'out'>('out');
   const [amount, setAmount] = useState('');
   const [comment, setComment] = useState('');
-  const [busy, setBusy] = useState(false);
+  const [busy, run] = useAction();
 
   const save = async () => {
     if (parseNum(amount) <= 0) return toast.error('Укажите сумму');
-    setBusy(true);
-    try {
+    await run(async () => {
       await q(db.rpc('cash_op', { p_shift: shift.id, p_kind: kind, p_amount: parseNum(amount), p_comment: comment.trim() }));
       toast.ok(kind === 'in' ? 'Внесение записано' : 'Изъятие записано');
       onClose();
-    } catch (e) {
-      toast.error(e);
-      setBusy(false);
-    }
+    }, { keepBusy: true });
   };
 
   return (
@@ -97,7 +90,7 @@ interface CloseProps {
 
 export function CloseShiftModal({ shift, currency, fiscal, onClose, onClosed }: CloseProps) {
   const [actual, setActual] = useState('');
-  const [busy, setBusy] = useState(false);
+  const [busy, run] = useAction();
 
   const data = useQuery(async () => {
     const [sales, ops] = await Promise.all([
@@ -124,17 +117,13 @@ export function CloseShiftModal({ shift, currency, fiscal, onClose, onClosed }: 
 
   const close = async () => {
     if (!d) return;
-    setBusy(true);
-    try {
+    await run(async () => {
       // Z-отчёт снимается до закрытия: если Webkassa недоступна, смена в Sauda остаётся открытой
       if (fiscal) await fiscalZReport(shift.id);
       await q(db.rpc('close_shift', { p_shift: shift.id, p_closing_cash: actual.trim() === '' ? d.expected : parseNum(actual) }));
       toast.ok(`Смена № ${shift.number} закрыта`);
       onClosed();
-    } catch (e) {
-      toast.error(e);
-      setBusy(false);
-    }
+    }, { keepBusy: true });
   };
 
   return (

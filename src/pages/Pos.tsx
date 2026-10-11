@@ -14,6 +14,7 @@ import { toast } from '../ui/toast';
 import { PosReturn } from './PosReturn';
 import { CashOpModal, CloseShiftModal, OpenShift } from './PosShift';
 import { SaleModal } from './SaleModal';
+import { useAction } from '../ui/useAction';
 
 interface Line {
   product: Product;
@@ -106,7 +107,7 @@ export function Pos() {
   const [receipt, setReceipt] = useState<{ id: string; received?: number } | null>(null);
   const [cash, setCash] = useState('');
   const [card, setCard] = useState('');
-  const [busy, setBusy] = useState(false);
+  const [busy, run] = useAction();
   const returnSale = params.get('return');
 
   // касса та же, пока не сменился её id: перечитанный объект кассы не должен сбрасывать чек
@@ -213,6 +214,16 @@ export function Pos() {
    */
   const attempt = useRef<{ content: string; id: string } | null>(null);
 
+  const refreshPrices = async () => {
+    try {
+      const fresh = await q<Product[]>(db.from('products').select('*').in('id', lines.map((l) => l.product.id)));
+      setLines((prev) => prev.map((l) => ({ ...l, product: fresh.find((p) => p.id === l.product.id) ?? l.product })));
+      setModal(null);
+    } catch (e) {
+      toast.error(e);
+    }
+  };
+
   const pay = async () => {
     if (!shift) return;
     if (change < 0) return toast.error('Получено меньше, чем нужно оплатить наличными');
@@ -224,10 +235,10 @@ export function Pos() {
     };
     const content = JSON.stringify(sale);
     if (attempt.current?.content !== content) attempt.current = { content, id: crypto.randomUUID() };
-    setBusy(true);
-    try {
+    const clientId = attempt.current.id;
+    await run(async () => {
       const res = await q<{ id: string; number: number; total: number }>(
-        db.rpc('create_sale', { ...sale, p_client_id: attempt.current.id }),
+        db.rpc('create_sale', { ...sale, p_client_id: clientId }),
       );
       attempt.current = null;
       setLines([]);
@@ -235,17 +246,13 @@ export function Pos() {
       setModal(null);
       setReceipt({ id: res.id, received: cashDue > 0 ? cashGiven : undefined });
       void sendFiscal();
-    } catch (e) {
-      toast.error(e);
-      // цены могли поменять в кабинете, пока чек был открыт: подтягиваем свежие
-      if (e instanceof Error && e.message.includes('изменилась')) {
-        const fresh = await q<Product[]>(db.from('products').select('*').in('id', lines.map((l) => l.product.id)));
-        setLines((prev) => prev.map((l) => ({ ...l, product: fresh.find((p) => p.id === l.product.id) ?? l.product })));
-        setModal(null);
-      }
-    } finally {
-      setBusy(false);
-    }
+    }, {
+      onError: (e) => {
+        toast.error(e);
+        // цены могли поменять в кабинете, пока чек был открыт: подтягиваем свежие
+        if (e instanceof Error && e.message.includes('изменилась')) void refreshPrices();
+      },
+    });
   };
 
   const applyPercent = (value: string) => {

@@ -14,6 +14,7 @@ import { PhoneLink } from '../../ui/PhoneLink';
 import { toast } from '../../ui/toast';
 import { ApiKeys } from './ApiKeys';
 import { Branches } from './Branches';
+import { useAction } from '../../ui/useAction';
 
 /** Профиль магазина или компании: сначала просмотр, правка — по кнопке. */
 export function Profile() {
@@ -134,7 +135,7 @@ function ProfileEditor({ onClose }: { onClose: () => void }) {
     min: Number(company?.min_order) ? String(Number(company?.min_order)) : '', delivery: company?.delivery_note ?? '', payment: company?.payment_terms ?? '',
     prices: (company?.price_access ?? 'stores') as PriceAccessMode,
   });
-  const [busy, setBusy] = useState(false);
+  const [busy, run] = useAction();
   const set = (patch: Partial<typeof form>) => setForm({ ...form, ...patch });
 
   const save = async () => {
@@ -142,8 +143,7 @@ function ProfileEditor({ onClose }: { onClose: () => void }) {
     const website = form.website.trim() && !/^https?:\/\//i.test(form.website.trim()) ? `https://${form.website.trim()}` : form.website.trim();
     if (!form.name.trim()) return toast.error('Укажите название');
     if (bin && !/^\d{12}$/.test(bin)) return toast.error('БИН или ИИН — это 12 цифр');
-    setBusy(true);
-    try {
+    await run(async () => {
       await q(db.from('orgs').update({
         name: form.name.trim(), phone: formatPhone(form.phone), email: form.email.trim(), contact_name: form.contact.trim(), bin,
       }).eq('id', org.id));
@@ -157,10 +157,7 @@ function ProfileEditor({ onClose }: { onClose: () => void }) {
       toast.ok('Профиль сохранён');
       await reload();
       onClose();
-    } catch (e) {
-      toast.error(e);
-      setBusy(false);
-    }
+    }, { keepBusy: true });
   };
 
   return (

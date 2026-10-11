@@ -10,6 +10,7 @@ import type { Offer } from '../../lib/types';
 import { Icon } from '../../ui/Icon';
 import { toast } from '../../ui/toast';
 import { PharmacyStub } from './Catalog';
+import { useAction } from '../../ui/useAction';
 
 /** «У меня новый магазин»: пакеты ходовых товаров с ценами компаний — добавить в свой список и сразу заказать. */
 export function NewStore() {
@@ -32,7 +33,7 @@ function StarterPacks() {
   const [sale, setSale] = useState<Record<string, string>>({});
   /** штрихкод → выбранное предложение, если оно не самое выгодное */
   const [chosen, setChosen] = useState<Record<string, string>>({});
-  const [busy, setBusy] = useState(false);
+  const [busy, run] = useAction();
 
   const items = useQuery(() => q<StarterItem[]>(db.rpc('starter_products', { p_org: org.id })), [org.id]);
   const offers = useQuery(
@@ -96,8 +97,7 @@ function StarterPacks() {
   }, [items.data, byBarcode, chosen, qty, picked]);
 
   const submit = async (toCart: boolean) => {
-    setBusy(true);
-    try {
+    await run(async () => {
       const all = items.data ?? [];
       const fresh = all.filter((i) => !i.mine && chosenSet.has(i.id));
       const res = fresh.length
@@ -122,10 +122,7 @@ function StarterPacks() {
       }
       toast.ok(`Добавлено товаров: ${res.created}` + (toCart ? '. Проверьте корзину и отправьте заказы.' : '. Закупочные и розничные цены уже проставлены.'));
       navigate(toCart ? '/cart' : '/products');
-    } catch (e) {
-      toast.error(e);
-      setBusy(false);
-    }
+    }, { keepBusy: true });
   };
 
   const newCount = (items.data ?? []).filter((i) => !i.mine && chosenSet.has(i.id)).length;

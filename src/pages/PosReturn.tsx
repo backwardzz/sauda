@@ -5,6 +5,7 @@ import type { Shift } from '../lib/types';
 import { Modal } from '../ui/Modal';
 import { toast } from '../ui/toast';
 import { SALE_SELECT, type SaleFull } from './SaleModal';
+import { useAction } from '../ui/useAction';
 
 interface Props {
   orgId: string;
@@ -23,14 +24,10 @@ export function PosReturn({ orgId, shift, currency, saleId, onClose, onDone }: P
   const [qtys, setQtys] = useState<Record<string, string>>({});
   const [toCard, setToCard] = useState(false);
   // чек, открытый по ссылке, начинает загружаться сразу
-  const [busy, setBusy] = useState(!!saleId);
+  const [busy, run] = useAction(!!saleId);
 
-  const load = (by: { id: string } | { number: number }) => {
-    setBusy(true);
-    return fetchSale(by);
-  };
-  const fetchSale = async (by: { id: string } | { number: number }) => {
-    try {
+  const load = (by: { id: string } | { number: number }) =>
+    run(async () => {
       let query = db.from('sales').select(SALE_SELECT).eq('org_id', orgId).eq('kind', 'sale');
       query = 'id' in by ? query.eq('id', by.id) : query.eq('number', by.number);
       const found = await q<SaleFull | null>(query.maybeSingle() as never);
@@ -44,15 +41,10 @@ export function PosReturn({ orgId, shift, currency, saleId, onClose, onDone }: P
       setQtys({});
       setToCard(Number(found.paid_cash) === 0 && Number(found.paid_card) > 0);
       setSale(found);
-    } catch (e) {
-      toast.error(e);
-    } finally {
-      setBusy(false);
-    }
-  };
+    });
 
   useEffect(() => {
-    if (saleId) void fetchSale({ id: saleId });
+    if (saleId) void load({ id: saleId });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [saleId]);
 
@@ -69,17 +61,13 @@ export function PosReturn({ orgId, shift, currency, saleId, onClose, onDone }: P
     if (!sale) return;
     const items = lines.filter((l) => l.take > 0).map((l) => ({ item_id: l.item.id, qty: l.take }));
     if (!items.length) return toast.error('Укажите количество к возврату');
-    setBusy(true);
-    try {
+    await run(async () => {
       const res = await q<{ id: string; number: number; total: number }>(
         db.rpc('create_return', { p_shift: shift.id, p_sale: sale.id, p_items: items, p_refund_card: toCard ? total : 0 }),
       );
       toast.ok(`Возврат № ${res.number} на ${money(res.total)} ${currency}`);
       onDone(res.id);
-    } catch (e) {
-      toast.error(e);
-      setBusy(false);
-    }
+    }, { keepBusy: true });
   };
 
   return (

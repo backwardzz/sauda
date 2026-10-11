@@ -14,6 +14,7 @@ import { NumCell } from '../../ui/NumCell';
 import { ProductImage } from '../../ui/ProductImage';
 import { toast } from '../../ui/toast';
 import { ProductEditor } from './ProductEditor';
+import { useAction } from '../../ui/useAction';
 
 interface SaleLine {
   variant_id: string;
@@ -31,7 +32,7 @@ export function CompanyProduct() {
   const navigate = useNavigate();
   const { org, canManage, canEditCatalog, branches } = useCompany();
   const [mode, setMode] = useState<'edit' | 'copy' | 'remove' | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [busy, run] = useAction();
 
   const data = useCompanyCatalog(org.id);
   const product = data.data?.products.find((p) => p.id === id);
@@ -93,15 +94,11 @@ export function CompanyProduct() {
     act(() => q(db.rpc('set_company_stock', { p_variant: v.id, p_branch: branchId, p_qty: n })));
 
   const remove = async () => {
-    setBusy(true);
-    try {
+    await run(async () => {
       await q(db.rpc('archive_company_product', { p_product: id }));
       toast.ok('Товар убран из каталога');
       navigate('/catalog');
-    } catch (e) {
-      toast.error(e);
-      setBusy(false);
-    }
+    }, { keepBusy: true });
   };
 
   if (data.loading && !data.data) return <div className="empty">Загрузка…</div>;

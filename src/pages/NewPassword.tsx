@@ -2,13 +2,14 @@ import { useState, type FormEvent } from 'react';
 import { useSession } from '../lib/session';
 import { db, errorText } from '../lib/supabase';
 import { passwordError, PasswordHint, PasswordRepeat } from './Auth';
+import { useAction } from '../ui/useAction';
 
 /** Вход по коду или ссылке восстановления: сначала новый пароль, потом кабинет. */
 export function NewPassword() {
   const { user, setRecovering, signOut } = useSession();
   const [password, setPassword] = useState('');
   const [password2, setPassword2] = useState('');
-  const [busy, setBusy] = useState(false);
+  const [busy, run] = useAction();
   const [error, setError] = useState<string | null>(null);
 
   const submit = async (e: FormEvent) => {
@@ -16,11 +17,11 @@ export function NewPassword() {
     setError(null);
     const bad = passwordError(password, password2);
     if (bad) return setError(bad);
-    setBusy(true);
-    const { error } = await db.auth.updateUser({ password });
-    setBusy(false);
-    if (error) return setError(errorText(error));
-    setRecovering(false);
+    await run(async () => {
+      const { error } = await db.auth.updateUser({ password });
+      if (error) throw error;
+      setRecovering(false);
+    }, { onError: (e) => setError(errorText(e)) });
   };
 
   return (

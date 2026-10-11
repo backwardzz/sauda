@@ -8,6 +8,7 @@ import { DataTable, type Column } from '../../ui/DataTable';
 import { Icon } from '../../ui/Icon';
 import { Modal } from '../../ui/Modal';
 import { toast } from '../../ui/toast';
+import { useAction } from '../../ui/useAction';
 
 const EMPTY = { name: '', store_id: '', active: true, receipt_header: '', receipt_footer: 'Спасибо за покупку!' };
 const NO_FISCAL = { enabled: true, cashbox: '', login: '', password: '' };
@@ -18,7 +19,7 @@ export function Registers() {
   const [form, setForm] = useState(EMPTY);
   const [fiscal, setFiscal] = useState(NO_FISCAL);
   const [vat, setVat] = useState('');
-  const [busy, setBusy] = useState(false);
+  const [busy, act] = useAction();
 
   const openShifts = useQuery(
     () => q<Pick<Shift, 'register_id' | 'opened_at' | 'number'>[]>(
@@ -44,18 +45,13 @@ export function Registers() {
   };
 
   const run = async (fn: () => Promise<unknown>, ok: string) => {
-    setBusy(true);
-    try {
+    await act(async () => {
       await fn();
       toast.ok(ok);
       setEdit(null);
       await reload();
       fiscalRows.reload();
-    } catch (e) {
-      toast.error(e);
-    } finally {
-      setBusy(false);
-    }
+    });
   };
 
   const save = () => {

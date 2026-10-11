@@ -13,6 +13,7 @@ import { Icon } from '../../ui/Icon';
 import { ProductImage } from '../../ui/ProductImage';
 import { toast } from '../../ui/toast';
 import { ProductEditor } from './ProductEditor';
+import { useAction } from '../../ui/useAction';
 
 type Filter = 'all' | 'active' | 'low' | 'out' | 'hidden';
 
@@ -29,7 +30,7 @@ export function CompanyCatalog() {
   const [category, setCategory] = useState<string | null>(null);
   const [filter, setFilter] = useStored<Filter>('sauda:company:filter', 'all');
   const [adding, setAdding] = useState(false);
-  const [busy, setBusy] = useState(false);
+  const [busy, run] = useAction();
   const [stockBranch, setStockBranch] = useState('');
   const file = useRef<HTMLInputElement>(null);
 
@@ -75,8 +76,7 @@ export function CompanyCatalog() {
 
   const importFile = async (f: File | undefined) => {
     if (!f) return;
-    setBusy(true);
-    try {
+    await run(async () => {
       const { items } = parseImport(await readXlsx(f));
       const total = { created: 0, updated: 0, products: 0 };
       for (let i = 0; i < items.length; i += 500) {
@@ -98,12 +98,8 @@ export function CompanyCatalog() {
       }
       toast.ok(`Каталог обновлён: новых видов ${total.created}, изменено ${total.updated}, новых товаров ${total.products}`);
       data.reload();
-    } catch (e) {
-      toast.error(e);
-    } finally {
-      setBusy(false);
-      if (file.current) file.current.value = '';
-    }
+    });
+    if (file.current) file.current.value = '';
   };
 
   const download = () => {

@@ -11,6 +11,7 @@ import { Icon } from '../../ui/Icon';
 import { Modal } from '../../ui/Modal';
 import { PhoneLink } from '../../ui/PhoneLink';
 import { toast } from '../../ui/toast';
+import { useAction } from '../../ui/useAction';
 
 const EMPTY = {
   name: '', city: null as number | null, address: '', phone: '', manager: '', hours: '', main: false,
@@ -32,7 +33,7 @@ export function Branches() {
   const canEdit = (b: Branch) => owner || (canManage && branchId === b.id);
   const [edit, setEdit] = useState<Branch | 'new' | null>(null);
   const [form, setForm] = useState(EMPTY);
-  const [busy, setBusy] = useState(false);
+  const [busy, act] = useAction();
   const set = (patch: Partial<typeof form>) => setForm({ ...form, ...patch });
 
   // чем занят каждый филиал: позиции на складе и заказы в работе
@@ -80,17 +81,12 @@ export function Branches() {
   };
 
   const run = async (fn: () => Promise<unknown>, ok: string) => {
-    setBusy(true);
-    try {
+    await act(async () => {
       await fn();
       toast.ok(ok);
       setEdit(null);
       await reload();
-    } catch (e) {
-      toast.error(e);
-    } finally {
-      setBusy(false);
-    }
+    });
   };
 
   const save = () => {

@@ -10,7 +10,7 @@ import type { StockDoc } from '../lib/types';
 import { DataTable, type Column } from '../ui/DataTable';
 import { Icon } from '../ui/Icon';
 import { lastDays, PeriodPicker, periodRange } from '../ui/Period';
-import { toast } from '../ui/toast';
+import { useAction } from '../ui/useAction';
 
 /** Приложение «Накладные в Sauda»: на GitHub Pages лежит рядом, при локальной разработке — на порту 5179. */
 function invoicesUrl(): string {
@@ -25,7 +25,7 @@ export function StockDocs() {
   const teamName = useTeamNames();
   const suppliers = useContractors(org.id, 'supplier');
   const [period, setPeriod] = useState(lastDays(30));
-  const [busy, setBusy] = useState(false);
+  const [busy, run] = useAction();
   const valid = isDocKind(kind);
 
   const docs = useQuery(async () => {
@@ -52,14 +52,10 @@ export function StockDocs() {
   const needSecondStore = kind === 'transfer' && stores.length < 2;
 
   const create = async () => {
-    setBusy(true);
-    try {
+    await run(async () => {
       const id = await q<string>(db.rpc('create_stock_doc', { p_store: store.id, p_kind: kind }));
       navigate(`/docs/${kind}/${id}`);
-    } catch (e) {
-      toast.error(e);
-      setBusy(false);
-    }
+    }, { keepBusy: true });
   };
 
   const rows = docs.data ?? [];

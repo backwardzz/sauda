@@ -6,6 +6,7 @@ import { API_URL, db, PUBLIC_KEY, q } from '../../lib/supabase';
 import { Icon } from '../../ui/Icon';
 import { Modal } from '../../ui/Modal';
 import { toast } from '../../ui/toast';
+import { useAction } from '../../ui/useAction';
 
 interface ApiKey {
   id: string;
@@ -32,7 +33,7 @@ export function ApiKeys() {
   const [name, setName] = useState('');
   // выпущенный ключ показывается один раз: в базе остаётся только его хеш
   const [issued, setIssued] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [busy, run] = useAction();
 
   const keys = useQuery(
     () => q<ApiKey[]>(db.from('company_api_keys').select('id, name, prefix, created_at, last_used_at, revoked_at')
@@ -41,15 +42,10 @@ export function ApiKeys() {
   );
 
   const create = async () => {
-    setBusy(true);
-    try {
+    await run(async () => {
       setIssued(await q<string>(db.rpc('create_api_key', { p_org: org.id, p_name: name })));
       keys.reload();
-    } catch (e) {
-      toast.error(e);
-    } finally {
-      setBusy(false);
-    }
+    });
   };
 
   const revoke = async (k: ApiKey) => {

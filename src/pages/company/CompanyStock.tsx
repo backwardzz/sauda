@@ -12,6 +12,7 @@ import { Icon } from '../../ui/Icon';
 import { NumCell } from '../../ui/NumCell';
 import { ProductImage } from '../../ui/ProductImage';
 import { toast } from '../../ui/toast';
+import { useAction } from '../../ui/useAction';
 
 type Filter = 'all' | StockState;
 
@@ -26,7 +27,7 @@ export function CompanyStock() {
   const [filter, setFilter] = useState<Filter>('all');
   // что показывают столбцы филиалов: остатки, свои цены или «продаётся ли здесь»
   const [mode, setMode] = useState<'qty' | 'price' | 'listed'>('qty');
-  const [busy, setBusy] = useState(false);
+  const [busy, run] = useAction();
   const file = useRef<HTMLInputElement>(null);
 
   const data = useCompanyCatalog(org.id);
@@ -68,8 +69,7 @@ export function CompanyStock() {
 
   const importFile = async (f: File | undefined) => {
     if (!f) return;
-    setBusy(true);
-    try {
+    await run(async () => {
       const { items, columns } = parseStockImport(await readXlsx(f), branches);
       if (items.length === 0) throw new Error('В файле не нашлось ни одной строки с остатком');
       const total = { updated: 0, unchanged: 0, not_found: [] as string[] };
@@ -83,11 +83,7 @@ export function CompanyStock() {
       toast.ok(`Остатки загружены (${columns.join(', ')}): изменено ${total.updated}, без изменений ${total.unchanged}`
         + (missing ? `. Штрихкодов нет в каталоге: ${missing} — заведите эти товары в «Каталоге»` : ''));
       data.reload();
-    } catch (e) {
-      toast.error(e);
-    } finally {
-      setBusy(false);
-    }
+    });
   };
 
   const download = () => {

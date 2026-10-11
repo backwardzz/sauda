@@ -13,6 +13,7 @@ import { Icon } from '../ui/Icon';
 import { Confirm } from '../ui/Modal';
 import { toast } from '../ui/toast';
 import { CategoryModal } from './CategoryModal';
+import { useAction } from '../ui/useAction';
 
 interface Form {
   /** Название без объёма, процента и упаковки: они в своих полях. */
@@ -69,7 +70,7 @@ export function ProductCard() {
 
   const [form, setForm] = useState<Form>(EMPTY);
   const [tab, setTab] = useState<'main' | 'moves'>('main');
-  const [busy, setBusy] = useState(false);
+  const [busy, run] = useAction();
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [catModal, setCatModal] = useState(false);
 
@@ -138,8 +139,7 @@ export function ProductCard() {
     const pct = form.percent.trim() === '' ? null : parseNum(form.percent);
     if (pct != null && (pct < 0 || pct > 100)) return toast.error('Процент — от 0 до 100');
     if (!form.barcode.trim()) return toast.error('Укажите штрихкод или сгенерируйте внутренний');
-    setBusy(true);
-    try {
+    await run(async () => {
       const row = {
         org_id: org.id,
         kind,
@@ -163,23 +163,16 @@ export function ProductCard() {
       else await q(db.from('products').insert(row));
       toast.ok(id ? 'Изменения сохранены' : kind === 'service' ? 'Услуга создана' : 'Товар создан');
       navigate('/products');
-    } catch (e) {
-      toast.error(e);
-      setBusy(false);
-    }
+    }, { keepBusy: true });
   };
 
   const remove = async () => {
     if (!id) return;
-    setBusy(true);
-    try {
+    await run(async () => {
       await q(db.from('products').update({ archived: true, quick_group_id: null }).eq('id', id));
       toast.ok('Товар удалён');
       navigate('/products');
-    } catch (e) {
-      toast.error(e);
-      setBusy(false);
-    }
+    }, { keepBusy: true });
   };
 
   const moveColumns: Column<StockMove>[] = [

@@ -11,6 +11,7 @@ import { Modal } from '../../ui/Modal';
 import { ProductImage } from '../../ui/ProductImage';
 import { SuggestInput } from '../../ui/SuggestInput';
 import { toast } from '../../ui/toast';
+import { useAction } from '../../ui/useAction';
 
 interface Row {
   key: number;
@@ -63,7 +64,7 @@ export function ProductEditor({ product, variants = [], stock, duplicate, catego
         }))
       : [blank()],
   );
-  const [busy, setBusy] = useState(false);
+  const [busy, run] = useAction();
   const [looking, setLooking] = useState(false);
   const [uploading, setUploading] = useState(false);
   const file = useRef<HTMLInputElement>(null);
@@ -137,8 +138,7 @@ export function ProductEditor({ product, variants = [], stock, duplicate, catego
     }
     const labels = rows.map((r) => r.label.trim().toLowerCase());
     if (rows.length > 1 && new Set(labels).size < labels.length) return toast.error('У видов должны быть разные подписи: например, «0,5 л» и «1 л»');
-    setBusy(true);
-    try {
+    await run(async () => {
       const id = await q<string>(db.rpc('save_company_product', {
         p_org: org.id,
         p_product: { id: isNew ? null : product!.id, name: form.name, category: form.category, description: form.description, image_url: form.image.trim() },
@@ -157,11 +157,7 @@ export function ProductEditor({ product, variants = [], stock, duplicate, catego
         setForm({ name: '', category: form.category, description: '', image: '' });
         setRows([blank(last)]);
       } else onClose();
-    } catch (e) {
-      toast.error(e);
-    } finally {
-      setBusy(false);
-    }
+    });
   };
 
   return (

@@ -12,6 +12,7 @@ import { Icon } from '../../ui/Icon';
 import { ProductImage } from '../../ui/ProductImage';
 import { PhoneLink } from '../../ui/PhoneLink';
 import { toast } from '../../ui/toast';
+import { useAction } from '../../ui/useAction';
 
 type Mine = Pick<StockRow, 'barcode' | 'qty' | 'min_stock' | 'low' | 'unit'>;
 const NO_STOCK = new Map<string, Mine>();
@@ -27,7 +28,7 @@ export function MarketCompany() {
   const [onlyLow, setOnlyLow] = useState(false);
   const [onlyCart, setOnlyCart] = useState(false);
   const [comment, setComment] = useState('');
-  const [busy, setBusy] = useState(false);
+  const [busy, run] = useAction();
 
   const company = useQuery(async () => (await q<CompanyCard[]>(db.rpc('company_directory'))).find((c) => c.id === id) ?? null, [id]);
   const catalog = useQuery(() => loadOffers(store.id, { company: id }), [id, store.id]);
@@ -102,8 +103,7 @@ export function MarketCompany() {
   };
 
   const submit = async () => {
-    setBusy(true);
-    try {
+    const sent = await run(async () => {
       const orderId = await q<string>(
         db.rpc('place_order', {
           p_store: store.id, p_supplier: id, p_comment: comment.trim(),
@@ -113,11 +113,8 @@ export function MarketCompany() {
       clear();
       toast.ok('Заказ отправлен компании');
       navigate(`/orders/${orderId}`);
-    } catch (e) {
-      toast.error(e);
-      setBusy(false);
-      catalog.reload();
-    }
+    }, { keepBusy: true });
+    if (!sent) catalog.reload();
   };
 
   if (company.loading && !c) return <div className="empty">Загрузка…</div>;
