@@ -334,11 +334,11 @@ export function AuthPage() {
                   <span>Кто вы?</span>
                   <div className="choice">
                     <button type="button" className={kind === 'store' ? 'active' : ''} onClick={() => morph(() => setKind('store'))}>
-                      <b>Магазин</b>
-                      <span>Учёт товаров, касса, заказы у компаний</span>
+                      <b>Торговая точка</b>
+                      <span>Магазин или сеть: учёт товаров, касса, заказы у поставщиков</span>
                     </button>
                     <button type="button" className={kind === 'company' ? 'active' : ''} onClick={() => morph(() => setKind('company'))}>
-                      <b>Компания</b>
+                      <b>Поставщик</b>
                       <span>Производитель или дистрибьютор: каталог, склад и заказы магазинов</span>
                     </button>
                   </div>

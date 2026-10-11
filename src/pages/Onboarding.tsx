@@ -134,11 +134,11 @@ export function Onboarding() {
         )}
         <div className="choice">
           <button type="button" className={isStore ? 'active' : ''} onClick={() => setKind('store')}>
-            <b>Магазин</b>
-            <span>Учёт товаров, касса, отчёты, заказы у компаний</span>
+            <b>Торговая точка</b>
+            <span>Магазин или сеть: учёт товаров, касса, отчёты, заказы у поставщиков</span>
           </button>
           <button type="button" className={!isStore ? 'active' : ''} onClick={() => setKind('company')}>
-            <b>Компания</b>
+            <b>Поставщик</b>
             <span>Производитель или дистрибьютор: каталог, склад и заказы магазинов</span>
           </button>
         </div>
