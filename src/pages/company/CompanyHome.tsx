@@ -78,7 +78,7 @@ export function CompanyHome() {
       {company && !company.description && products > 0 && (
         <div className="card banner">
           <span className="grow">Расскажите магазинам о компании: логотип, описание и условия доставки повышают доверие к заказу.</span>
-          <Link className="btn" to="/company">Заполнить профиль</Link>
+          <Link className="btn" to="/profile">Заполнить профиль</Link>
         </div>
       )}
 
