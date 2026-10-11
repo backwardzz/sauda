@@ -97,8 +97,12 @@ export function Onboarding() {
         {lostEmployee && (
           <div className="card pad warn-box stack">
             <b>Приглашение для {user?.email} не найдено</b>
-            <span>Попросите владельца пригласить именно этот адрес в разделе «Сотрудники», затем нажмите «Проверить снова». Или заведите свой магазин ниже.</span>
+            <span>
+              Попросите владельца пригласить именно этот адрес в разделе «Сотрудники», затем нажмите «Проверить снова».
+              Если вы из филиала или склада компании, отправьте владельцу заявку. Или заведите свой магазин ниже.
+            </span>
             <button type="button" className="btn" onClick={() => void reload()}>Проверить снова</button>
+            <button type="button" className="btn" onClick={() => setAsBranch(true)}>Я из филиала или склада компании</button>
           </div>
         )}
         <div className="choice">

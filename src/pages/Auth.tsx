@@ -44,7 +44,8 @@ export function PasswordHint({ value }: { value: string }) {
 }
 
 type Mode = 'login' | 'register' | 'reset';
-type Kind = 'store' | 'company' | 'employee' | 'branch';
+/** employee — человек не заводит организацию: его пригласили, или он попросит доступ к филиалу на следующем шаге. */
+type Kind = 'store' | 'company' | 'employee';
 
 const SOURCES = ['Знакомые или коллеги', 'Instagram', 'TikTok', 'WhatsApp или Telegram', 'Поиск в интернете', 'Представитель компании-поставщика', 'Другое'];
 
@@ -90,7 +91,7 @@ export function AuthPage() {
   const needCaptcha = Boolean(CAPTCHA_KEY) && !captcha;
   // токен капчи одноразовый: после любого запроса проверка проходит заново
   const nextCaptcha = () => { setCaptcha(null); setRound((r) => r + 1); };
-  // Карточка плавно меняет размер, когда меняется её содержимое (вход ↔ регистрация, «Сотрудник» прячет поля):
+  // Карточка плавно меняет размер, когда меняется её содержимое (вход ↔ регистрация, «по приглашению» прячет поля):
   // перед изменением запоминается размер, после отрисовки карточка анимируется от старого размера к новому.
   const card = useRef<HTMLFormElement>(null);
   const sizeBefore = useRef<{ w: number; h: number } | null>(null);
@@ -120,7 +121,7 @@ export function AuthPage() {
   });
   const go = (m: Mode) => morph(() => { setMode(m); setError(null); setNotice(null); });
   // сотрудник по приглашению и филиал компании не заводят свою организацию: только имя, почта и пароль
-  const employee = kind === 'employee' || kind === 'branch';
+  const employee = kind === 'employee';
 
   const sendRecovery = (to: string) =>
     db.auth.resetPasswordForEmail(to, { redirectTo: confirmUrl(), captchaToken });
@@ -317,33 +318,34 @@ export function AuthPage() {
           </div>
           {mode === 'register' && (
             <>
-              <div className="field">
-                <span>Кто вы?</span>
-                <div className="choice">
-                  <button type="button" className={kind === 'store' ? 'active' : ''} onClick={() => morph(() => setKind('store'))}>
-                    <b>Магазин</b>
-                    <span>Учёт товаров, касса, заказы у компаний</span>
-                  </button>
-                  <button type="button" className={kind === 'company' ? 'active' : ''} onClick={() => morph(() => setKind('company'))}>
-                    <b>Компания</b>
-                    <span>Производитель или дистрибьютор: каталог, склад и заказы магазинов</span>
-                  </button>
-                  <button type="button" className={kind === 'branch' ? 'active' : ''} onClick={() => morph(() => setKind('branch'))}>
-                    <b>Филиал компании</b>
-                    <span>Склад или филиал: свой кабинет с заказами, остатками и ценами</span>
-                  </button>
-                  <button type="button" className={kind === 'employee' ? 'active' : ''} onClick={() => morph(() => setKind('employee'))}>
-                    <b>Сотрудник</b>
-                    <span>Меня пригласили в магазин или компанию</span>
-                  </button>
+              {employee ? (
+                <div className="card pad stack">
+                  <b>Регистрация по приглашению</b>
+                  <span>
+                    Укажите почту, на которую владелец отправил приглашение: после входа вы сразу попадёте в его магазин или компанию.
+                    Если вы из филиала или склада компании и приглашения нет — на следующем шаге отправите заявку владельцу.
+                  </span>
+                  <div>
+                    <button type="button" className="link-btn" onClick={() => morph(() => setKind('store'))}>Я завожу свой магазин или компанию</button>
+                  </div>
                 </div>
-              </div>
-              {employee && (
-                <p className="hint">
-                  {kind === 'branch'
-                    ? 'Компанию и свой филиал выберете на следующем шаге. Кабинет откроется, когда владелец компании одобрит заявку.'
-                    : 'Укажите почту, на которую владелец отправил приглашение: после входа вы сразу попадёте в его магазин или компанию.'}
-                </p>
+              ) : (
+                <div className="field">
+                  <span>Кто вы?</span>
+                  <div className="choice">
+                    <button type="button" className={kind === 'store' ? 'active' : ''} onClick={() => morph(() => setKind('store'))}>
+                      <b>Магазин</b>
+                      <span>Учёт товаров, касса, заказы у компаний</span>
+                    </button>
+                    <button type="button" className={kind === 'company' ? 'active' : ''} onClick={() => morph(() => setKind('company'))}>
+                      <b>Компания</b>
+                      <span>Производитель или дистрибьютор: каталог, склад и заказы магазинов</span>
+                    </button>
+                  </div>
+                  <div>
+                    <button type="button" className="link-btn" onClick={() => morph(() => setKind('employee'))}>Меня пригласили или я из филиала компании</button>
+                  </div>
+                </div>
               )}
               {kind === 'store' && (
                 <div className="field">
