@@ -314,21 +314,19 @@ export function AuthPage() {
           </div>
           <div className="segmented">
             <button type="button" className={mode === 'login' ? 'active' : ''} onClick={() => go('login')}>Вход</button>
-            <button type="button" className={mode === 'register' ? 'active' : ''} onClick={() => go('register')}>Регистрация</button>
+            <button type="button" className={mode === 'register' && !employee ? 'active' : ''}
+              onClick={() => { go('register'); if (employee) setKind('store'); }}>Регистрация</button>
+            {/* приглашённый не заводит организацию: отдельная вкладка, чтобы не читать вопросы для владельцев */}
+            <button type="button" className={mode === 'register' && employee ? 'active' : ''}
+              onClick={() => { go('register'); setKind('employee'); }}>Меня пригласили</button>
           </div>
           {mode === 'register' && (
             <>
               {employee ? (
-                <div className="card pad stack">
-                  <b>Регистрация по приглашению</b>
-                  <span>
-                    Укажите почту, на которую владелец отправил приглашение: после входа вы сразу попадёте в его магазин или компанию.
-                    Если вы из филиала или склада компании и приглашения нет — на следующем шаге отправите заявку владельцу.
-                  </span>
-                  <div>
-                    <button type="button" className="link-btn" onClick={() => morph(() => setKind('store'))}>Я завожу свой магазин или компанию</button>
-                  </div>
-                </div>
+                <p className="hint">
+                  Укажите почту, на которую владелец отправил приглашение: после входа вы сразу попадёте в его магазин или компанию.
+                  Если вы из филиала или склада компании и приглашения нет — на следующем шаге отправите заявку владельцу.
+                </p>
               ) : (
                 <div className="field">
                   <span>Кто вы?</span>
@@ -341,9 +339,6 @@ export function AuthPage() {
                       <b>Поставщик</b>
                       <span>Производитель или дистрибьютор: каталог, склад и заказы магазинов</span>
                     </button>
-                  </div>
-                  <div>
-                    <button type="button" className="link-btn" onClick={() => morph(() => setKind('employee'))}>Меня пригласили или я из филиала компании</button>
                   </div>
                 </div>
               )}
