@@ -63,6 +63,8 @@ const MarketCompany = page(() => import('./pages/market/MarketCompany'), 'Market
 const CartPage = page(() => import('./pages/market/Cart'), 'CartPage');
 const Orders = page(() => import('./pages/market/Orders'), 'Orders');
 const OrderView = page(() => import('./pages/market/OrderView'), 'OrderView');
+const Returns = page(() => import('./pages/market/Returns'), 'Returns');
+const ReturnView = page(() => import('./pages/market/ReturnView'), 'ReturnView');
 const Catalog = page(() => import('./pages/catalog/Catalog'), 'Catalog');
 const NewStore = page(() => import('./pages/catalog/NewStore'), 'NewStore');
 const CompanyHome = page(() => import('./pages/company/CompanyHome'), 'CompanyHome');
@@ -111,6 +113,8 @@ export function App() {
             <Route path="/" element={<CompanyHome />} />
             <Route path="/orders" element={<Orders />} />
             <Route path="/orders/:id" element={<OrderView />} />
+            <Route path="/order-returns" element={<Returns />} />
+            <Route path="/order-returns/:id" element={<ReturnView />} />
             <Route path="/catalog" element={<CompanyCatalog />} />
             <Route path="/catalog/:id" element={<CompanyProduct />} />
             <Route path="/stock" element={<CompanyStock />} />
@@ -163,6 +167,8 @@ export function App() {
           <Route path="/cart" element={<CartPage />} />
           <Route path="/orders" element={<Orders />} />
           <Route path="/orders/:id" element={<OrderView />} />
+          <Route path="/order-returns" element={<Returns />} />
+          <Route path="/order-returns/:id" element={<ReturnView />} />
           <Route path="/docs/:kind" element={<StockDocs />} />
           <Route path="/docs/:kind/:id" element={<StockDocEditor />} />
           <Route path="/sales" element={<Sales kind="sale" />} />

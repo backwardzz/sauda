@@ -567,6 +567,57 @@ async function main() {
   check('заказ принят и связан с приёмкой', done.status === 'received' && done.supply_doc === supplyDoc && Number(done.total) === 11000, done);
   await fails('повторно принять нельзя', a.rpc('receive_order', { p_order: order }), 'только отгруженный');
 
+  console.log('Возвраты компании');
+  const halfItem = seen.order_items.find((i: Row) => i.variant_id === half);
+  const colaItem = seen.order_items.find((i: Row) => i.barcode === '4870000000011');
+  const orderReturn = (db: SupabaseClient, items: Row[], reason = 'defect') =>
+    db.rpc('create_order_return', { p_order: order, p_items: items, p_reason: reason, p_comment: 'Помятые банки' });
+  const retStatus = (db: SupabaseClient, id: string, status: string, extra: Row = {}) =>
+    db.rpc('set_return_status', { p_return: id, p_status: status, ...extra });
+  await fails('компания не оформляет возврат за магазин', orderReturn(s, [{ item_id: halfItem.id, qty: 1 }]), 'Нет доступа');
+  await fails('кассир не оформляет возврат', orderReturn(c, [{ item_id: halfItem.id, qty: 1 }]), 'Нет доступа');
+  await fails('чужой магазин не оформляет возврат', orderReturn(b, [{ item_id: halfItem.id, qty: 1 }]), 'Нет доступа');
+  await fails('возврат без причины отклонён', orderReturn(a, [{ item_id: halfItem.id, qty: 1 }], 'nope'), 'причину');
+  await fails('пустой возврат отклонён', orderReturn(a, []), 'какие товары');
+  await fails('вернуть больше привезённого нельзя', orderReturn(a, [{ item_id: halfItem.id, qty: 25 }]), 'не больше');
+  await fails('неотгруженную позицию вернуть нельзя', orderReturn(a, [{ item_id: juice.id, qty: 1 }]), 'не больше');
+  const ret1 = await must(orderReturn(a, [{ item_id: halfItem.id, qty: 4 }, { item_id: colaItem.id, qty: 2 }])) as string;
+  const retSeen = await must(s.from('order_returns').select('*, order_return_items(*)').eq('id', ret1).single());
+  check('компания видит возврат, сумму и филиал',
+    Number(retSeen.total) === 4 * 200 + 2 * 350 && retSeen.branch_id === mainBranch.id && retSeen.order_return_items.length === 2 && retSeen.status === 'new', retSeen);
+  check('чужой магазин возврата не видит', (await must(b.from('order_returns').select('id'))).length === 0);
+  await fails('второй возврат считает уже оформленное', orderReturn(a, [{ item_id: halfItem.id, qty: 21 }]), 'осталось 20');
+  await fails('напрямую возврат не меняется', a.from('order_returns').update({ status: 'received' }).eq('id', ret1).select(), 'permission denied');
+  await fails('магазин не согласует возврат за компанию', retStatus(a, ret1, 'accepted'), 'Нет доступа');
+  await fails('несогласованный товар отдать нельзя', retStatus(a, ret1, 'sent'), 'согласилась');
+  await fails('отказ без объяснения отклонён', retStatus(s, ret1, 'rejected'), 'почему');
+  await must(retStatus(s, ret1, 'accepted', { p_comment: 'Заберём в четверг' }));
+  await fails('компания не отдаёт товар за магазин', retStatus(s, ret1, 'sent'), 'Нет доступа');
+  const colaHad = await stockOf(cola.id);
+  const halfBefore = await stockAt(half, mainBranch.id);
+  await must(retStatus(a, ret1, 'sent'));
+  eq('отданный товар списан с остатков магазина', await stockOf(cola.id), colaHad - 2);
+  eq('склад компании не меняется, пока товар не получен', await stockAt(half, mainBranch.id), halfBefore);
+  await fails('отданный возврат не отменить', retStatus(a, ret1, 'canceled'), 'нельзя отменить');
+  await fails('магазин не подтверждает получение за компанию', retStatus(a, ret1, 'received'), 'Нет доступа');
+  await must(retStatus(s, ret1, 'received'));
+  eq('полученный товар вернулся в остаток филиала', await stockAt(half, mainBranch.id), halfBefore + 4);
+  const retMove = await must(s.from('company_stock_moves').select('delta, order_id').eq('variant_id', half).eq('reason', 'return'));
+  check('возврат записан в историю остатков компании', retMove.length === 1 && Number(retMove[0].delta) === 4 && retMove[0].order_id === order, retMove);
+  const retDone = await must(a.from('order_returns').select('status, restocked, supplier_comment').eq('id', ret1).single());
+  check('возврат закрыт', retDone.status === 'received' && retDone.restocked && retDone.supplier_comment === 'Заберём в четверг', retDone);
+  // отклонённый и отменённый возвраты не уменьшают то, что можно вернуть; брак в остаток не возвращается
+  const ret2 = await must(orderReturn(a, [{ item_id: halfItem.id, qty: 20 }])) as string;
+  await must(retStatus(s, ret2, 'rejected', { p_comment: 'Товар вскрыт' }));
+  const ret3 = await must(orderReturn(a, [{ item_id: halfItem.id, qty: 20 }])) as string;
+  await must(retStatus(a, ret3, 'canceled'));
+  const ret4 = await must(orderReturn(a, [{ item_id: halfItem.id, qty: 20 }])) as string;
+  await must(retStatus(s, ret4, 'accepted'));
+  await must(retStatus(a, ret4, 'sent'));
+  await must(retStatus(s, ret4, 'received', { p_restock: false }));
+  eq('брак в остаток не возвращён', await stockAt(half, mainBranch.id), halfBefore + 4);
+  await fails('всё возвращено — больше вернуть нечего', orderReturn(a, [{ item_id: halfItem.id, qty: 1 }]), 'осталось 0');
+
   // второй заказ: на складе главного филиала товара не хватает, заказ уходит филиалу в Астане
   const order2 = await must(a.rpc('place_order', { p_store: store, p_supplier: supOrg, p_items: [{ variant_id: half, qty: 60 }] }));
   await must(s.rpc('set_order_status', { p_order: order2, p_status: 'confirmed' }));

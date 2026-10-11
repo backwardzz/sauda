@@ -17,6 +17,11 @@ export function CompanyHome() {
     [org.id],
   );
   const catalog = useCompanyCatalog(org.id);
+  // возвраты, по которым ход за компанией: ответить на новый или подтвердить получение товара
+  const returns = useQuery(
+    () => q<{ id: string }[]>(db.from('order_returns').select('id').eq('supplier_org', org.id).in('status', ['new', 'sent'])),
+    [org.id],
+  );
 
   const all = orders.data ?? [];
   const [monthAgo] = useState(() => Date.now() - 30 * 86400_000);
@@ -63,6 +68,7 @@ export function CompanyHome() {
       <div className="stat-grid">
         <Stat label="Новые заказы: подтвердите" value={String(all.filter((o) => o.status === 'new').length)} to="/orders" />
         <Stat label="Подтверждены: отгрузите" value={String(all.filter((o) => o.status === 'confirmed').length)} to="/orders" />
+        {!!returns.data?.length && <Stat label="Возвраты: ждут вашего ответа" value={String(returns.data.length)} to="/order-returns" />}
         <Stat label="Отгружено за 30 дней" value={moneyShort(revenue)} unit={org.currency} />
         <Stat label="Магазинов-клиентов" value={String(clients.size)} />
         <Stat label="Товаров в каталоге" value={catalog.data ? String(products) : '…'} to="/catalog" />

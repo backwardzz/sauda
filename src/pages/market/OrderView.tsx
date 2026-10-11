@@ -5,11 +5,12 @@ import { dateTime, money, parseNum, qty as fmtQty, round2 } from '../../lib/form
 import { useChanged, useQuery } from '../../lib/hooks';
 import { useOrg } from '../../lib/session';
 import { db, q } from '../../lib/supabase';
-import { ORDER_STATUS, type Order, type OrderItem } from '../../lib/types';
+import { ORDER_STATUS, RETURN_REASON, RETURN_STATUS, type Order, type OrderItem, type OrderReturn, type OrderReturnItem } from '../../lib/types';
 import { exportXlsx } from '../../lib/xlsx';
 import { Icon } from '../../ui/Icon';
 import { Confirm, Modal } from '../../ui/Modal';
 import { toast } from '../../ui/toast';
+import { ReturnModal } from './ReturnModal';
 
 const STEPS = ['new', 'confirmed', 'shipped', 'received'] as const;
 
@@ -23,6 +24,14 @@ export function OrderView() {
   const [ask, setAsk] = useState<'confirm' | 'ship' | null>(null);
   const [edits, setEdits] = useState<Record<string, string>>({});
   const [reply, setReply] = useState('');
+  const [returning, setReturning] = useState(false);
+
+  // возвраты по заказу: видны обеим сторонам, по ним считается, сколько ещё можно вернуть
+  const returns = useQuery(
+    () => q<(OrderReturn & { order_return_items: OrderReturnItem[] })[]>(
+      db.from('order_returns').select('*, order_return_items(*)').eq('order_id', id).order('created_at', { ascending: false }) as never),
+    [id],
+  );
 
   const data = useQuery(
     () => q<(Order & { order_items: OrderItem[] }) | null>(db.from('orders').select('*, order_items(*)').eq('id', id).maybeSingle() as never),
@@ -55,6 +64,14 @@ export function OrderView() {
   const changed = items.some((i) => shipQty(i) !== Number(i.qty));
   const have = (i: OrderItem) => (i.variant_id ? stock.data?.get(i.variant_id) : undefined);
   const short = items.filter((i) => have(i) !== undefined && have(i)! < shipQty(i));
+  const orderReturns = returns.data ?? [];
+  const returned = new Map<string, number>();
+  for (const r of orderReturns) {
+    if (r.status === 'rejected' || r.status === 'canceled') continue;
+    for (const i of r.order_return_items) returned.set(i.order_item_id, (returned.get(i.order_item_id) ?? 0) + Number(i.qty));
+  }
+  const canReturn = (i: OrderItem) => Math.max(Math.round((Number(i.qty_shipped ?? i.qty) - (returned.get(i.id) ?? 0)) * 1000) / 1000, 0);
+  const returnable = !isSupplier && canManage && o.status === 'received' && !returns.loading && items.some((i) => canReturn(i) > 0);
 
   const run = async (fn: () => Promise<unknown>, ok: string, after?: (r: unknown) => void) => {
     setBusy(true);
@@ -138,6 +155,7 @@ export function OrderView() {
         {!isSupplier && canManage && ['received', 'canceled'].includes(o.status) && (
           <button className="btn" onClick={repeat} title="Положить те же товары в корзину"><Icon name="undo" size={16} />Повторить заказ</button>
         )}
+        {returnable && <button className="btn" onClick={() => setReturning(true)}>Вернуть товар</button>}
         {((isSupplier && open) || (!isSupplier && o.status === 'new' && canManage)) && (
           <button className="btn danger" disabled={busy} onClick={() => setConfirmCancel(true)}>Отменить заказ</button>
         )}
@@ -243,6 +261,24 @@ export function OrderView() {
         <p className="hint" style={{ marginTop: 10 }}>«Принять товар» создаст черновик приёмки с этими количествами и ценами. Товары, которых ещё нет в вашей базе, заведутся сами.</p>
       )}
 
+      {orderReturns.length > 0 && (
+        <div className="card" style={{ marginTop: 16 }}>
+          <div className="card-head"><h2>Возвраты по заказу</h2><span className="spacer" /><Link to="/order-returns">Все возвраты</Link></div>
+          {orderReturns.map((r) => (
+            <div className="list-row" key={r.id} style={{ cursor: 'pointer' }} onClick={() => navigate(`/order-returns/${r.id}`)}>
+              <span className={`badge ${RETURN_STATUS[r.status].badge}`}>{RETURN_STATUS[r.status].label}</span>
+              <span className="grow"><a>№ {r.number}</a> · {RETURN_REASON[r.reason]}{r.comment && <span className="muted"> · {r.comment}</span>}</span>
+              <span className="muted">{dateTime(r.created_at)}</span>
+              <b className="num" style={{ minWidth: 90, textAlign: 'right' }}>{money(r.total)}</b>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {returning && (
+        <ReturnModal order={o} items={items} left={canReturn} currency={org.currency} onClose={() => setReturning(false)}
+          onDone={(rid) => navigate(`/order-returns/${rid}`)} />
+      )}
       {ask === 'confirm' && (
         <Confirm title={`Подтвердить заказ № ${o.number}`} busy={busy} onClose={() => setAsk(null)} onConfirm={confirm}
           confirmLabel={changed ? 'Подтвердить с изменениями' : 'Подтвердить заказ'}

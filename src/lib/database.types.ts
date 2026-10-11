@@ -586,6 +586,74 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"order_return_items": {
+                  Row: {
+                    "barcode": string,"id": string,"name": string,"order_item_id": string,"price": number,"qty": number,"return_id": string,"store_org": string,"supplier_org": string,"unit": string,"variant_id": string | null
+                  }
+                  Insert: {
+                    "barcode": string,"id"?: string,"name": string,"order_item_id": string,"price": number,"qty": number,"return_id": string,"store_org": string,"supplier_org": string,"unit": string,"variant_id"?: string | null
+                  }
+                  Update: {
+                    "barcode"?: string,"id"?: string,"name"?: string,"order_item_id"?: string,"price"?: number,"qty"?: number,"return_id"?: string,"store_org"?: string,"supplier_org"?: string,"unit"?: string,"variant_id"?: string | null
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "order_return_items_order_item_id_fkey"
+      columns: ["order_item_id"]
+isOneToOne: false
+      referencedRelation: "order_items"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "order_return_items_return_fkey"
+      columns: ["return_id","supplier_org","store_org"]
+isOneToOne: false
+      referencedRelation: "order_returns"
+      referencedColumns: ["id","supplier_org","store_org"]
+    },{
+      foreignKeyName: "order_return_items_variant_id_fkey"
+      columns: ["variant_id"]
+isOneToOne: false
+      referencedRelation: "company_variants"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"order_returns": {
+                  Row: {
+                    "accepted_at": string | null,"branch_id": string | null,"branch_name": string,"comment": string,"created_at": string,"created_by": string | null,"id": string,"number": number,"order_id": string,"order_number": number,"reason": string,"received_at": string | null,"restocked": boolean,"sent_at": string | null,"status": string,"store_id": string,"store_name": string,"store_org": string,"store_org_name": string,"supplier_comment": string,"supplier_name": string,"supplier_org": string,"total": number
+                  }
+                  Insert: {
+                    "accepted_at"?: string | null,"branch_id"?: string | null,"branch_name"?: string,"comment"?: string,"created_at"?: string,"created_by"?: string | null,"id"?: string,"number": number,"order_id": string,"order_number": number,"reason": string,"received_at"?: string | null,"restocked"?: boolean,"sent_at"?: string | null,"status"?: string,"store_id": string,"store_name": string,"store_org": string,"store_org_name": string,"supplier_comment"?: string,"supplier_name": string,"supplier_org": string,"total"?: number
+                  }
+                  Update: {
+                    "accepted_at"?: string | null,"branch_id"?: string | null,"branch_name"?: string,"comment"?: string,"created_at"?: string,"created_by"?: string | null,"id"?: string,"number"?: number,"order_id"?: string,"order_number"?: number,"reason"?: string,"received_at"?: string | null,"restocked"?: boolean,"sent_at"?: string | null,"status"?: string,"store_id"?: string,"store_name"?: string,"store_org"?: string,"store_org_name"?: string,"supplier_comment"?: string,"supplier_name"?: string,"supplier_org"?: string,"total"?: number
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "order_returns_branch_id_fkey"
+      columns: ["branch_id"]
+isOneToOne: false
+      referencedRelation: "company_branches"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "order_returns_order_fkey"
+      columns: ["order_id","supplier_org","store_org"]
+isOneToOne: false
+      referencedRelation: "orders"
+      referencedColumns: ["id","supplier_org","store_org"]
+    },{
+      foreignKeyName: "order_returns_store_id_fkey"
+      columns: ["store_id"]
+isOneToOne: false
+      referencedRelation: "product_stock"
+      referencedColumns: ["store_id"]
+    },{
+      foreignKeyName: "order_returns_store_id_fkey"
+      columns: ["store_id"]
+isOneToOne: false
+      referencedRelation: "stores"
+      referencedColumns: ["id"]
+    }
+                  ]
                 },"orders": {
                   Row: {
                     "branch_id": string | null,"branch_name": string,"comment": string,"confirmed_at": string | null,"created_at": string,"created_by": string | null,"id": string,"number": number,"received_at": string | null,"shipped_at": string | null,"status": string,"store_address": string,"store_city": string,"store_city_id": number | null,"store_id": string,"store_name": string,"store_org": string,"store_org_name": string,"store_phone": string,"supplier_comment": string,"supplier_name": string,"supplier_org": string,"supply_doc": string | null,"total": number
@@ -1259,6 +1327,9 @@ isOneToOne: false
 "create_api_key":
 { Args: { "p_name": string | null,"p_org": string | null}; Returns: string
                            },
+"create_order_return":
+{ Args: { "p_comment"?: string | null,"p_items": unknown,"p_order": string | null,"p_reason": string | null}; Returns: string
+                           },
 "create_org":
 { Args: { "p_business"?: string | null,"p_city"?: number | null,"p_kind"?: string | null,"p_name": string | null,"p_profile"?: unknown,"p_store"?: string | null}; Returns: string
                            },
@@ -1382,6 +1453,9 @@ isOneToOne: false
                            },
 "set_register_fiscal":
 { Args: { "p_cashbox": string | null,"p_enabled": boolean | null,"p_login": string | null,"p_password": string | null,"p_register": string | null}; Returns: undefined
+                           },
+"set_return_status":
+{ Args: { "p_comment"?: string | null,"p_restock"?: boolean | null,"p_return": string | null,"p_status": string | null}; Returns: undefined
                            },
 "set_stock_doc_item":
 { Args: { "p_doc": string | null,"p_price"?: number | null,"p_product": string | null,"p_qty": number | null,"p_sale_price"?: number | null}; Returns: undefined

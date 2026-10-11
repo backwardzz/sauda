@@ -144,7 +144,7 @@ export interface StockMoveRow {
   variant_id: string;
   delta: number;
   qty_after: number;
-  reason: 'adjust' | 'import' | 'shipment';
+  reason: 'adjust' | 'import' | 'shipment' | 'api' | 'return';
   order_id: string | null;
   comment: string;
   created_at: string;
@@ -154,6 +154,8 @@ export const STOCK_REASON: Record<StockMoveRow['reason'], string> = {
   adjust: 'Правка остатка',
   import: 'Загрузка прайса',
   shipment: 'Отгрузка заказа',
+  api: 'Обмен с учётной системой',
+  return: 'Возврат от магазина',
 };
 
 /** Строка функции store_offers: вид товара компании глазами магазина. */
@@ -256,6 +258,66 @@ export interface Order {
   created_at: string;
   confirmed_at: string | null;
   shipped_at: string | null;
+  received_at: string | null;
+}
+
+export type ReturnStatus = 'new' | 'accepted' | 'sent' | 'received' | 'rejected' | 'canceled';
+
+export const RETURN_STATUS: Record<ReturnStatus, { label: string; badge: string }> = {
+  new: { label: 'Новый', badge: 'accent' },
+  accepted: { label: 'Согласован', badge: 'warn' },
+  sent: { label: 'Товар отдан', badge: 'warn' },
+  received: { label: 'Получен', badge: 'ok' },
+  rejected: { label: 'Отклонён', badge: 'danger' },
+  canceled: { label: 'Отменён', badge: '' },
+};
+
+export type ReturnReason = 'defect' | 'expired' | 'wrong' | 'excess' | 'other';
+
+export const RETURN_REASON: Record<ReturnReason, string> = {
+  defect: 'Брак',
+  expired: 'Срок годности',
+  wrong: 'Привезли не тот товар',
+  excess: 'Лишний товар',
+  other: 'Другое',
+};
+
+export interface OrderReturnItem {
+  id: string;
+  return_id: string;
+  order_item_id: string;
+  variant_id: string | null;
+  name: string;
+  barcode: string;
+  unit: string;
+  qty: number;
+  price: number;
+}
+
+/** Возврат товара компании по принятому заказу. */
+export interface OrderReturn {
+  id: string;
+  number: number;
+  order_id: string;
+  order_number: number;
+  supplier_org: string;
+  store_org: string;
+  store_id: string;
+  branch_id: string | null;
+  branch_name: string;
+  status: ReturnStatus;
+  reason: ReturnReason;
+  supplier_name: string;
+  store_org_name: string;
+  store_name: string;
+  comment: string;
+  supplier_comment: string;
+  total: number;
+  /** Компания вернула товар в остаток филиала. */
+  restocked: boolean;
+  created_at: string;
+  accepted_at: string | null;
+  sent_at: string | null;
   received_at: string | null;
 }
 
@@ -410,7 +472,7 @@ export interface StockMove {
   id: number;
   delta: number;
   qty_after: number;
-  reason: 'posting' | 'writeoff' | 'sale' | 'return' | 'supply' | 'transfer_out' | 'transfer_in' | 'inventory';
+  reason: 'posting' | 'writeoff' | 'sale' | 'return' | 'supply' | 'transfer_out' | 'transfer_in' | 'inventory' | 'supplier_return';
   ref_number: number | null;
   created_at: string;
 }
@@ -474,6 +536,7 @@ export const MOVE_REASON: Record<StockMove['reason'], string> = {
   transfer_out: 'Перемещение в другой магазин',
   transfer_in: 'Перемещение из другого магазина',
   inventory: 'Инвентаризация',
+  supplier_return: 'Возврат компании',
 };
 
 /** Строка документа из функции stock_doc_lines. */
