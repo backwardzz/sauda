@@ -43,6 +43,28 @@ export function PasswordHint({ value }: { value: string }) {
   );
 }
 
+/** Почему новый пароль не годится: слабый или не совпал с повтором. null — всё в порядке. */
+export function passwordError(password: string, repeat: string): string | null {
+  const weak = passwordChecks(password).find((c) => !c.ok);
+  if (weak) return `Пароль: ${weak.text}`;
+  return password === repeat ? null : 'Пароли не совпадают';
+}
+
+/** Поле «Пароль ещё раз» с отметкой, совпал ли повтор. */
+export function PasswordRepeat({ value, password, onChange }: { value: string; password: string; onChange: (v: string) => void }) {
+  return (
+    <label className="field">
+      <span>Пароль ещё раз</span>
+      <input type="password" value={value} onChange={(e) => onChange(e.target.value)} required autoComplete="new-password" />
+      {value && (
+        <span className={`hint ${value === password ? 'ok-text' : 'error-text'}`}>
+          {value === password ? '✓ пароли совпадают' : 'пароли не совпадают'}
+        </span>
+      )}
+    </label>
+  );
+}
+
 type Mode = 'login' | 'register' | 'reset';
 /** Ролей две. Сотрудники не регистрируются: владелец приглашает их, и они входят через «Вход». */
 type Kind = 'store' | 'company';
@@ -194,18 +216,12 @@ export function AuthPage() {
     e.preventDefault();
     setError(null);
     setNotice(null);
-    if (firstLogin) {
-      const weak = passwordChecks(password).find((c) => !c.ok);
-      if (weak) return setError(`Пароль: ${weak.text}`);
-      if (password !== password2) return setError('Пароли не совпадают');
+    if (mode === 'register' && city == null) return setError('Выберите город');
+    if (mode === 'register' || firstLogin) {
+      const bad = passwordError(password, password2);
+      if (bad) return setError(bad);
     }
-    if (mode === 'register') {
-      if (city == null) return setError('Выберите город');
-      const weak = passwordChecks(password).find((c) => !c.ok);
-      if (weak) return setError(`Пароль: ${weak.text}`);
-      if (password !== password2) return setError('Пароли не совпадают');
-      if (!agree) return setError('Отметьте согласие с офертой и политикой конфиденциальности');
-    }
+    if (mode === 'register' && !agree) return setError('Отметьте согласие с офертой и политикой конфиденциальности');
     if (needCaptcha) return setError('Подтвердите, что вы не робот');
     setBusy(true);
     try {
@@ -432,15 +448,7 @@ export function AuthPage() {
           </label>
           {firstLogin && (
             <>
-              <label className="field">
-                <span>Пароль ещё раз</span>
-                <input type="password" value={password2} onChange={(e) => setPassword2(e.target.value)} required autoComplete="new-password" />
-                {password2 && (
-                  <span className={`hint ${password2 === password ? 'ok-text' : 'error-text'}`}>
-                    {password2 === password ? '✓ пароли совпадают' : 'пароли не совпадают'}
-                  </span>
-                )}
-              </label>
+              <PasswordRepeat value={password2} password={password} onChange={setPassword2} />
               <p className="hint">
                 Вас пригласили, и это ваш первый вход: придумайте пароль — с ним вы будете входить дальше.
                 Продолжая, вы принимаете <Link to="/terms" target="_blank">условия оферты</Link> и{' '}
@@ -455,15 +463,7 @@ export function AuthPage() {
           )}
           {mode === 'register' && (
             <>
-              <label className="field">
-                <span>Пароль ещё раз</span>
-                <input type="password" value={password2} onChange={(e) => setPassword2(e.target.value)} required autoComplete="new-password" />
-                {password2 && (
-                  <span className={`hint ${password2 === password ? 'ok-text' : 'error-text'}`}>
-                    {password2 === password ? '✓ пароли совпадают' : 'пароли не совпадают'}
-                  </span>
-                )}
-              </label>
+              <PasswordRepeat value={password2} password={password} onChange={setPassword2} />
               <div className="form-grid">
                 <label className="field">
                   <span>Откуда узнали о Sauda</span>

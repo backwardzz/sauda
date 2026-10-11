@@ -10,6 +10,7 @@ import { Icon } from '../../ui/Icon';
 import { LogoUpload } from '../../ui/LogoUpload';
 import { Modal } from '../../ui/Modal';
 import { PhoneInput } from '../../ui/PhoneInput';
+import { PhoneLink } from '../../ui/PhoneLink';
 import { toast } from '../../ui/toast';
 import { ApiKeys } from './ApiKeys';
 import { Branches } from './Branches';
@@ -80,7 +81,7 @@ export function Profile() {
           <div className="section-title">Реквизиты и контакты</div>
           <dl className="kv info">
             <dt>БИН / ИИН</dt><dd>{org.bin || '—'}</dd>
-            <dt>Телефон</dt><dd>{org.phone ? <a href={`tel:${org.phone.replace(/[^\d+]/g, '')}`}>{org.phone}</a> : '—'}</dd>
+            <dt>Телефон</dt><dd>{org.phone ? <PhoneLink phone={org.phone} /> : '—'}</dd>
             <dt>Почта</dt><dd>{org.email ? <a href={`mailto:${org.email}`}>{org.email}</a> : '—'}</dd>
             <dt>Контактное лицо</dt><dd>{org.contact_name || '—'}</dd>
             {isCompany && <><dt>Сайт</dt><dd>{company?.website ? <a href={company.website} target="_blank" rel="noreferrer noopener">{company.website.replace(/^https?:\/\//, '')}</a> : '—'}</dd></>}

@@ -10,6 +10,7 @@ import { fullName } from '../../lib/variants';
 import { CompanyAvatar, VerifiedBadge } from '../../ui/CompanyAvatar';
 import { Icon } from '../../ui/Icon';
 import { ProductImage } from '../../ui/ProductImage';
+import { PhoneLink } from '../../ui/PhoneLink';
 import { toast } from '../../ui/toast';
 
 type Mine = Pick<StockRow, 'barcode' | 'qty' | 'min_stock' | 'low' | 'unit'>;
@@ -135,7 +136,7 @@ export function MarketCompany() {
       <div className="card company-about">
         {c.description && <p className="wide">{c.description}</p>}
         <span><Icon name="pin" size={15} />{c.cities.join(', ') || 'город не указан'}</span>
-        {c.phone && <span><Icon name="phone" size={15} /><a href={`tel:${c.phone.replace(/[^\d+]/g, '')}`}>{c.phone}</a></span>}
+        {c.phone && <span><Icon name="phone" size={15} /><PhoneLink phone={c.phone} /></span>}
         {minOrder > 0 && <span><Icon name="cash" size={15} />заказ от {money(minOrder)} {org.currency}</span>}
         {c.delivery_note && <span><Icon name="truck" size={15} />{c.delivery_note}</span>}
         {c.payment_terms && <span><Icon name="card" size={15} />{c.payment_terms}</span>}

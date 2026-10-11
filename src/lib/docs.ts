@@ -1,3 +1,4 @@
+import { round2 } from './format';
 import { db } from './supabase';
 import type { DocKind, DocLine } from './types';
 
@@ -57,5 +58,5 @@ export function lineExpected(l: DocLine, posted: boolean): number {
 export function lineSum(kind: DocKind, l: DocLine, posted: boolean): number {
   const price = linePrice(kind, l, posted);
   const qty = kind === 'inventory' ? Number(l.qty) - lineExpected(l, posted) : Number(l.qty);
-  return Math.round(qty * price * 100) / 100;
+  return round2(qty * price);
 }

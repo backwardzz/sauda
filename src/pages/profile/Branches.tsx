@@ -9,6 +9,7 @@ import { CitySelect } from '../../ui/CitySelect';
 import { PhoneInput } from '../../ui/PhoneInput';
 import { Icon } from '../../ui/Icon';
 import { Modal } from '../../ui/Modal';
+import { PhoneLink } from '../../ui/PhoneLink';
 import { toast } from '../../ui/toast';
 
 const EMPTY = {
@@ -136,7 +137,7 @@ export function Branches() {
                 </div>
                 <div className="branch-lines">
                   {b.address && <span><Icon name="building" size={14} />{b.address}</span>}
-                  {b.phone && <span><Icon name="phone" size={14} /><a href={`tel:${b.phone.replace(/[^\d+]/g, '')}`}>{b.phone}</a></span>}
+                  {b.phone && <span><Icon name="phone" size={14} /><PhoneLink phone={b.phone} /></span>}
                   {b.manager_name && <span><Icon name="users" size={14} />{b.manager_name}</span>}
                   {b.work_hours && <span><Icon name="clock" size={14} />{b.work_hours}</span>}
                   {!b.address && !b.phone && <span className="muted">Адрес и телефон не указаны</span>}

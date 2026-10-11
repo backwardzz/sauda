@@ -9,6 +9,7 @@ import { ORDER_STATUS, type Order, type OrderItem } from '../../lib/types';
 import { exportXlsx } from '../../lib/xlsx';
 import { Icon } from '../../ui/Icon';
 import { Confirm, Modal } from '../../ui/Modal';
+import { PhoneLink } from '../../ui/PhoneLink';
 import { toast } from '../../ui/toast';
 
 const STEPS = ['new', 'confirmed', 'shipped', 'received'] as const;
@@ -48,6 +49,7 @@ export function OrderView() {
   if (data.loading && !o) return <div className="empty">Загрузка…</div>;
   if (!o) return <div className="empty">Заказ не найден</div>;
 
+  const deliverTo = [o.store_city, o.store_address, o.store_name].filter(Boolean).join(', ') || 'адрес не указан';
   const items = [...o.order_items].sort((a, b) => a.name.localeCompare(b.name, 'ru'));
   const editable = isSupplier && o.status === 'new';
   const shipQty = (i: OrderItem) => (editable && edits[i.id] !== undefined ? Math.max(parseNum(edits[i.id]), 0) : Number(i.qty_shipped ?? i.qty));
@@ -152,12 +154,12 @@ export function OrderView() {
               <span>Магазин</span>
               <div>
                 {o.store_org_name}
-                {o.store_phone && <> · <a href={`tel:${o.store_phone.replace(/[^\d+]/g, '')}`}>{o.store_phone}</a></>}
+                {o.store_phone && <> · <PhoneLink phone={o.store_phone} /></>}
               </div>
             </div>
             <div className="field">
               <span>Куда везти</span>
-              <div>{[o.store_city, o.store_address, o.store_name].filter(Boolean).join(', ') || 'адрес не указан'}</div>
+              <div>{deliverTo}</div>
             </div>
             <label className="field">
               <span>Отгружает филиал</span>
@@ -268,7 +270,7 @@ export function OrderView() {
               Товар будет списан со склада{o.branch_name && <> ({o.branch_name})</>}: позиций {items.filter((i) => shipQty(i) > 0).length} на {money(total)} {org.currency}.
               Покупатель ({o.store_org_name}) сможет принять его у себя.
             </p>
-            <p className="muted">Куда везти: {[o.store_city, o.store_address, o.store_name].filter(Boolean).join(', ') || 'адрес не указан'}. Отменить отгрузку будет нельзя.</p>
+            <p className="muted">Куда везти: {deliverTo}. Отменить отгрузку будет нельзя.</p>
             {short.length > 0 && <p className="error-text">На складе филиала не хватает товаров: {short.length}. Пополните остаток или передайте заказ другому филиалу.</p>}
             {/* передачи заказа водителю пока нет: кнопка показывает, что она появится */}
             <button type="button" className="btn soon-btn" disabled title="Раздел для водителей-экспедиторов ещё в разработке">

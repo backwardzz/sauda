@@ -6,6 +6,7 @@ import { useCompany } from '../../lib/session';
 import { db, q } from '../../lib/supabase';
 import type { PriceAccessStatus } from '../../lib/types';
 import { DataTable, type Column } from '../../ui/DataTable';
+import { PhoneLink } from '../../ui/PhoneLink';
 import { toast } from '../../ui/toast';
 
 interface Row {
@@ -51,7 +52,7 @@ export function PriceAccess() {
     { key: 'city', title: 'Город', value: (r) => r.city },
     {
       key: 'phone', title: 'Телефон',
-      render: (r) => (r.phone ? <a href={`tel:${r.phone.replace(/[^\d+]/g, '')}`}>{r.phone}</a> : ''),
+      render: (r) => (r.phone ? <PhoneLink phone={r.phone} /> : ''),
     },
     { key: 'orders', title: 'Заказов', align: 'right', value: (r) => Number(r.orders) },
     { key: 'status', title: 'Статус', render: (r) => <span className={`badge ${STATUS[r.status].badge}`}>{STATUS[r.status].label}</span> },
