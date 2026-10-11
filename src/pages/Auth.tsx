@@ -201,7 +201,7 @@ export function AuthPage() {
         const { data, error } = await db.auth.signUp({
           email: email.trim(),
           password,
-          // выбор запоминается в профиле: следующий шаг (данные магазина или компании) откроется уже заполненным
+          // данные запоминаются в профиле: после входа по ним сразу создаётся магазин или компания (Onboarding)
           options: {
             emailRedirectTo: confirmUrl(),
             captchaToken,

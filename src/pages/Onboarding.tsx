@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { formatPhone } from '../lib/format';
 import { db, errorText, q } from '../lib/supabase';
@@ -9,7 +9,10 @@ import { COMPANY_TYPE, type CompanyType, type OrgKind } from '../lib/types';
 import { CitySelect } from '../ui/CitySelect';
 import { PhoneInput } from '../ui/PhoneInput';
 
-/** Первый вход: у пользователя ещё нет магазина или компании и нет приглашений. */
+/**
+ * Первый вход: у пользователя ещё нет магазина или компании и нет приглашений.
+ * После обычной регистрации организация создаётся сама из данных формы; экран видят только те, кого форма не спрашивала.
+ */
 export function Onboarding() {
   const { user, reload, signOut } = useSession();
   const navigate = useNavigate();
@@ -40,13 +43,20 @@ export function Onboarding() {
   const [error, setError] = useState<string | null>(null);
 
   const isStore = kind === 'store';
+  // Всё нужное уже спросила форма регистрации: магазин или компания создаются сразу, без этого экрана.
+  // Экран остаётся тем, кого форма не спрашивала: вход через Google, сотрудник без приглашения, филиал.
+  const [auto, setAuto] = useState(
+    () => (meta.account_kind === 'store' || meta.account_kind === 'company') && !!meta.org_name?.trim() && typeof meta.city_id === 'number' && !needTerms,
+  );
+  const started = useRef(false);
 
-  const submit = async (e: FormEvent) => {
-    e.preventDefault();
-    setError(null);
-    if (city == null) return setError('Выберите город');
-    if (needTerms && !agree) return setError('Отметьте согласие с офертой и политикой конфиденциальности');
-    if (bin.trim() && !/^\d{12}$/.test(bin.replace(/\s/g, ''))) return setError('БИН или ИИН — это 12 цифр');
+  const acceptTerms = async () => {
+    if (!needTerms) return;
+    const { error } = await db.auth.updateUser({ data: { terms_version: TERMS_VERSION, terms_accepted_at: new Date().toISOString() } });
+    if (error) throw error;
+  };
+
+  const create = async () => {
     setBusy(true);
     try {
       await acceptTerms();
@@ -63,7 +73,27 @@ export function Onboarding() {
     } catch (err) {
       setError(errorText(err));
       setBusy(false);
+      // не получилось создать автоматически: показываем форму с ошибкой, данные в ней уже подставлены
+      setAuto(false);
     }
+  };
+
+  useEffect(() => {
+    // в режиме разработки эффект запускается дважды: вторая организация не нужна
+    if (!auto || started.current) return;
+    started.current = true;
+    void create();
+    // запускается один раз при открытии
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const submit = (e: FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    if (city == null) return setError('Выберите город');
+    if (needTerms && !agree) return setError('Отметьте согласие с офертой и политикой конфиденциальности');
+    if (bin.trim() && !/^\d{12}$/.test(bin.replace(/\s/g, ''))) return setError('БИН или ИИН — это 12 цифр');
+    void create();
   };
 
   const termsBox = needTerms && (
@@ -75,11 +105,8 @@ export function Onboarding() {
       </span>
     </label>
   );
-  const acceptTerms = async () => {
-    if (!needTerms) return;
-    const { error } = await db.auth.updateUser({ data: { terms_version: TERMS_VERSION, terms_accepted_at: new Date().toISOString() } });
-    if (error) throw error;
-  };
+
+  if (auto) return <div className="auth muted">{isStore ? 'Создаём магазин…' : 'Создаём кабинет компании…'}</div>;
 
   if (asBranch) {
     return <BranchJoin onBack={() => setAsBranch(false)} terms={{ ok: !needTerms || agree, accept: acceptTerms, box: termsBox }} />;
