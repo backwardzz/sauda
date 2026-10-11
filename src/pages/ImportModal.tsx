@@ -1,9 +1,9 @@
 import { useState } from 'react';
-import { db, q } from '../lib/supabase';
 import { parseImport, type ImportRow } from '../lib/importParse';
 import { exportXlsx, readXlsx } from '../lib/xlsx';
 import { Modal } from '../ui/Modal';
 import { toast } from '../ui/toast';
+import { importProducts } from '../api/products';
 
 interface Props {
   orgId: string;
@@ -35,13 +35,7 @@ export function ImportModal({ orgId, storeId, storeName, onClose, onDone }: Prop
     try {
       for (let i = 0; i < parsed.items.length; i += CHUNK) {
         setProgress(i);
-        const res = await q<typeof total>(
-          db.rpc('import_products', {
-            p_org: orgId,
-            p_store: withStock ? storeId : null,
-            p_rows: parsed.items.slice(i, i + CHUNK),
-          }),
-        );
+        const res = await importProducts(orgId, withStock ? storeId : null, parsed.items.slice(i, i + CHUNK));
         total.created += res.created;
         total.updated += res.updated;
         total.skipped += res.skipped;

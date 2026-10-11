@@ -5,8 +5,7 @@ import { money, parseNum, qty as fmtQty, round2, round3 } from '../lib/format';
 import { useChanged, useQuery, useStored } from '../lib/hooks';
 import { useContractors, useQuickGroups } from '../lib/refs';
 import { useWorkspace } from '../lib/session';
-import { db, q } from '../lib/supabase';
-import type { Product, Shift } from '../lib/types';
+import type { Product } from '../lib/types';
 import { Icon } from '../ui/Icon';
 import { Confirm, Modal } from '../ui/Modal';
 import { ProductSearch, type ProductSearchHandle } from '../ui/ProductSearch';
@@ -15,6 +14,8 @@ import { PosReturn } from './PosReturn';
 import { CashOpModal, CloseShiftModal, OpenShift } from './PosShift';
 import { SaleModal } from './SaleModal';
 import { useAction } from '../ui/useAction';
+import { createSale, getOpenShift, getRegisterFiscal, pendingFiscalQuery, recordCancel } from '../api/pos';
+import { listAllQuickProducts, listProductsByIds } from '../api/products';
 
 interface Line {
   product: Product;
@@ -55,7 +56,7 @@ export function Pos() {
   const shiftQuery = useQuery(
     async () =>
       register
-        ? ((await q<Shift[]>(db.from('shifts').select('*').eq('register_id', register.id).is('closed_at', null).limit(1)))[0] ?? null)
+        ? ((await getOpenShift(register.id))[0] ?? null)
         : null,
     [register?.id],
   );
@@ -63,13 +64,12 @@ export function Pos() {
 
   // Webkassa: включена ли на кассе и сколько чеков смены ещё не дошло
   const fiscalOn = useQuery(
-    async () => !!register && (await q<{ enabled: boolean }[]>(db.from('register_fiscal').select('enabled').eq('register_id', register.id)))[0]?.enabled === true,
+    async () => !!register && (await getRegisterFiscal(register.id))[0]?.enabled === true,
     [register?.id],
   );
   const unsent = useQuery(async () => {
     if (!shift) return 0;
-    const { count, error } = await db.from('fiscal_receipts').select('id', { count: 'exact', head: true })
-      .eq('shift_id', shift.id).neq('status', 'done').neq('kind', 'z_report');
+    const { count, error } = await pendingFiscalQuery(shift.id);
     if (error) throw error;
     return count ?? 0;
   }, [shift?.id]);
@@ -93,10 +93,7 @@ export function Pos() {
   const customers = useContractors(org.id, 'customer');
   const groups = useQuickGroups(org.id);
   const quick = useQuery(
-    () => q<Product[]>(
-      db.from('products').select('*').eq('org_id', org.id).eq('archived', false).not('quick_group_id', 'is', null)
-        .order('quick_sort').order('name').limit(1000),
-    ),
+    () => listAllQuickProducts(org.id),
     [org.id],
   );
 
@@ -137,7 +134,7 @@ export function Pos() {
   const logCancel = (l: Line, from: number, to: number) => {
     if (!register || from <= to) return;
     // запрос supabase-js уходит только после then(): без него отмена не записалась бы
-    db.rpc('log_cancel', { p_register: register.id, p_product: l.product.id, p_name: l.product.name, p_qty_from: from, p_qty_to: to })
+    recordCancel(register.id, l.product.id, l.product.name, from, to)
       .then(({ error }) => error && console.warn('Отмена не записана:', error.message));
   };
 
@@ -216,7 +213,7 @@ export function Pos() {
 
   const refreshPrices = async () => {
     try {
-      const fresh = await q<Product[]>(db.from('products').select('*').in('id', lines.map((l) => l.product.id)));
+      const fresh = await listProductsByIds(lines.map((l) => l.product.id));
       setLines((prev) => prev.map((l) => ({ ...l, product: fresh.find((p) => p.id === l.product.id) ?? l.product })));
       setModal(null);
     } catch (e) {
@@ -237,9 +234,7 @@ export function Pos() {
     if (attempt.current?.content !== content) attempt.current = { content, id: crypto.randomUUID() };
     const clientId = attempt.current.id;
     await run(async () => {
-      const res = await q<{ id: string; number: number; total: number }>(
-        db.rpc('create_sale', { ...sale, p_client_id: clientId }),
-      );
+      const res = await createSale(sale, clientId);
       attempt.current = null;
       setLines([]);
       setCustomer('');

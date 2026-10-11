@@ -5,12 +5,12 @@ import { dateTime, money } from '../lib/format';
 import { useQuery } from '../lib/hooks';
 import { useContractors, useTeamNames } from '../lib/refs';
 import { useWorkspace } from '../lib/session';
-import { db, q } from '../lib/supabase';
 import type { StockDoc } from '../lib/types';
 import { DataTable, type Column } from '../ui/DataTable';
 import { Icon } from '../ui/Icon';
 import { lastDays, PeriodPicker, periodRange } from '../ui/Period';
 import { useAction } from '../ui/useAction';
+import { createStockDoc, listStockDocs } from '../api/docs';
 
 /** Приложение «Накладные в Sauda»: на GitHub Pages лежит рядом, при локальной разработке — на порту 5179. */
 function invoicesUrl(): string {
@@ -31,18 +31,7 @@ export function StockDocs() {
   const docs = useQuery(async () => {
     if (!valid) return [];
     const { from, to } = periodRange(period);
-    const scoped = () => {
-      const base = db.from('stock_docs').select('*').eq('org_id', org.id).eq('kind', kind);
-      // перемещение видно и в магазине-отправителе, и в магазине-получателе
-      return kind === 'transfer' ? base.or(`store_id.eq.${store.id},to_store_id.eq.${store.id}`) : base.eq('store_id', store.id);
-    };
-    // черновики показываются всегда, проведённые — за выбранный период
-    const [drafts, posted] = await Promise.all([
-      q<StockDoc[]>(scoped().eq('status', 'draft').order('created_at', { ascending: false }).limit(200)),
-      q<StockDoc[]>(scoped().eq('status', 'posted').gte('created_at', from).lt('created_at', to)
-        .order('created_at', { ascending: false }).limit(500)),
-    ]);
-    return [...drafts, ...posted];
+    return listStockDocs(org.id, store.id, kind, from, to);
   }, [org.id, store.id, kind, period]);
 
   if (!valid) return <Navigate to="/" replace />;
@@ -53,7 +42,7 @@ export function StockDocs() {
 
   const create = async () => {
     await run(async () => {
-      const id = await q<string>(db.rpc('create_stock_doc', { p_store: store.id, p_kind: kind }));
+      const id = await createStockDoc(store.id, kind);
       navigate(`/docs/${kind}/${id}`);
     }, { keepBusy: true });
   };

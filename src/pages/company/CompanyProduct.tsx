@@ -4,7 +4,6 @@ import { STOCK_BADGE, totals, useCompanyCatalog, variantState } from '../../lib/
 import { dateOnly, dateTime, money, moneyShort, plural, qty as fmtQty, round2, toDateInput } from '../../lib/format';
 import { useQuery } from '../../lib/hooks';
 import { useCompany } from '../../lib/session';
-import { db, q } from '../../lib/supabase';
 import { STOCK_REASON, type StockMoveRow, type Variant } from '../../lib/types';
 import { fullName } from '../../lib/variants';
 import { ColumnChart } from '../../ui/ColumnChart';
@@ -15,14 +14,7 @@ import { ProductImage } from '../../ui/ProductImage';
 import { toast } from '../../ui/toast';
 import { ProductEditor } from './ProductEditor';
 import { useAction } from '../../ui/useAction';
-
-interface SaleLine {
-  variant_id: string;
-  qty: number;
-  qty_shipped: number | null;
-  price: number;
-  orders: { id: string; number: number; status: string; shipped_at: string | null; store_org: string; store_org_name: string };
-}
+import { archiveProduct, listStockMoves, listVariantSales, type SaleLine, setCompanyStock, updateVariant } from '../../api/company';
 
 const DAYS = 30;
 
@@ -44,10 +36,8 @@ export function CompanyProduct() {
   const history = useQuery(async () => {
     if (!ids.length) return { lines: [] as SaleLine[], moves: [] as StockMoveRow[] };
     const [lines, moves] = await Promise.all([
-      q<SaleLine[]>(db.from('order_items')
-        .select('variant_id, qty, qty_shipped, price, orders!inner(id, number, status, shipped_at, store_org, store_org_name)')
-        .in('variant_id', ids).limit(5000) as never),
-      q<StockMoveRow[]>(db.from('company_stock_moves').select('*').in('variant_id', ids).order('created_at', { ascending: false }).limit(40)),
+      listVariantSales(ids),
+      listStockMoves(ids),
     ]);
     return { lines, moves };
   }, [ids.join(','), data.data]);
@@ -89,13 +79,13 @@ export function CompanyProduct() {
     data.reload();
   };
   const patch = (v: Variant, fields: Partial<Pick<Variant, 'price' | 'active'>>, ok?: string) =>
-    act(() => q(db.from('company_variants').update(fields).eq('id', v.id)), ok);
+    act(() => updateVariant(fields, v.id), ok);
   const setStock = (v: Variant, branchId: string, n: number) =>
-    act(() => q(db.rpc('set_company_stock', { p_variant: v.id, p_branch: branchId, p_qty: n })));
+    act(() => setCompanyStock(v.id, branchId, n));
 
   const remove = async () => {
     await run(async () => {
-      await q(db.rpc('archive_company_product', { p_product: id }));
+      await archiveProduct(id);
       toast.ok('Товар убран из каталога');
       navigate('/catalog');
     }, { keepBusy: true });

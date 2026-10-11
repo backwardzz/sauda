@@ -2,11 +2,13 @@ import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from 're
 import { Link } from 'react-router-dom';
 import { formatPhone } from '../lib/format';
 import { useSession } from '../lib/session';
-import { db, errorText } from '../lib/supabase';
+import { errorText } from '../lib/supabase';
 import { Captcha, CAPTCHA_KEY } from '../ui/Captcha';
 import { CitySelect } from '../ui/CitySelect';
 import { PhoneInput } from '../ui/PhoneInput';
 import { useAction } from '../ui/useAction';
+import { invitePending } from '../api/org';
+import { auth } from '../api/auth';
 
 /** Короткий логин без «@» (например, dev) — вход в аккаунт <логин>@sauda.test, который создаёт сидер. */
 const loginEmail = (login: string) => (login.includes('@') ? login : `${login}@sauda.test`);
@@ -154,7 +156,7 @@ export function AuthPage() {
     }
     let stale = false;
     const timer = setTimeout(async () => {
-      const { data } = await db.rpc('invite_pending', { p_email: address });
+      const { data } = await invitePending(address);
       if (!stale && (data === true) !== invited) morph(() => setInvited(data === true));
     }, 400);
     return () => { stale = true; clearTimeout(timer); };
@@ -165,7 +167,7 @@ export function AuthPage() {
   const inForm = { onError: (e: unknown) => setError(errorText(e)) };
 
   const sendRecovery = (to: string) =>
-    db.auth.resetPasswordForEmail(to, { redirectTo: confirmUrl(), captchaToken });
+    auth.resetPasswordForEmail(to, { redirectTo: confirmUrl(), captchaToken });
 
   const resend = async () => {
     if (!sentTo) return;
@@ -173,7 +175,7 @@ export function AuthPage() {
     setNotice(null);
     await run(async () => {
       const { error } = sentTo.type === 'signup'
-        ? await db.auth.resend({ type: 'signup', email: sentTo.email, options: { emailRedirectTo: confirmUrl(), captchaToken } })
+        ? await auth.resend({ type: 'signup', email: sentTo.email, options: { emailRedirectTo: confirmUrl(), captchaToken } })
         : await sendRecovery(sentTo.email);
       if (error) throw error;
       setNotice('Письмо отправлено ещё раз');
@@ -189,7 +191,7 @@ export function AuthPage() {
     // после кода восстановления сессия появляется сразу: флаг держит экран «новый пароль» вместо кабинета
     if (sentTo.type === 'recovery') setRecovering(true);
     const ok = await run(async () => {
-      const { error } = await db.auth.verifyOtp({ email: sentTo.email, token: code, type: sentTo.type });
+      const { error } = await auth.verifyOtp({ email: sentTo.email, token: code, type: sentTo.type });
       if (error) throw error;
     }, inForm);
     if (!ok && sentTo.type === 'recovery') setRecovering(false);
@@ -200,7 +202,7 @@ export function AuthPage() {
     setError(null);
     if (needCaptcha) return setError('Подтвердите, что вы не робот');
     await run(async () => {
-      const { error } = await db.auth.signInAnonymously({ options: { captchaToken } });
+      const { error } = await auth.signInAnonymously({ options: { captchaToken } });
       if (error) throw error;
     }, inForm);
     nextCaptcha();
@@ -209,7 +211,7 @@ export function AuthPage() {
   const google = async () => {
     setError(null);
     if (mode === 'register' && !agree) return setError('Отметьте согласие с офертой и политикой конфиденциальности');
-    const { error } = await db.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: confirmUrl() } });
+    const { error } = await auth.signInWithOAuth({ provider: 'google', options: { redirectTo: confirmUrl() } });
     if (error) setError(errorText(error));
   };
 
@@ -227,7 +229,7 @@ export function AuthPage() {
     await run(async () => {
       if (firstLogin) {
         // аккаунт создаётся с придуманным паролем; в организацию владельца человек попадает по приглашению сразу после входа
-        const { data, error } = await db.auth.signUp({
+        const { data, error } = await auth.signUp({
           email: email.trim(),
           password,
           options: {
@@ -244,7 +246,7 @@ export function AuthPage() {
           setPassword2('');
         }
       } else if (mode === 'login') {
-        const { error } = await db.auth.signInWithPassword({ email: loginEmail(email.trim()), password, options: { captchaToken } });
+        const { error } = await auth.signInWithPassword({ email: loginEmail(email.trim()), password, options: { captchaToken } });
         if (error) throw error;
       } else if (mode === 'reset') {
         const { error } = await sendRecovery(email.trim());
@@ -253,7 +255,7 @@ export function AuthPage() {
         setSentTo({ email: email.trim(), type: 'recovery' });
         setCode('');
       } else {
-        const { data, error } = await db.auth.signUp({
+        const { data, error } = await auth.signUp({
           email: email.trim(),
           password,
           // данные запоминаются в профиле: после входа по ним сразу создаётся магазин или компания (Onboarding)

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import { db, q } from './supabase';
 import type { Offer } from './types';
+import { listOffersByBarcodes, listOffersByCompany } from '../api/market';
 
 /** Корзина заказа: вид товара компании → количество. Своя на каждую пару «магазин — компания». */
 export type Cart = Record<string, number>;
@@ -118,11 +118,11 @@ export async function loadOffers(storeId: string, by: { company?: string; barcod
   const list = by.barcodes ?? by.variants;
   if (list && !list.length) return [];
   // страница компании показывает и товары без цен (прайс по запросу), остальным нужны только те, что можно заказать
-  if (!list) return q<Offer[]>(db.rpc('store_offers', { p_store: storeId, p_company: by.company }));
+  if (!list) return listOffersByCompany(storeId, by.company);
   const out: Offer[] = [];
   for (let i = 0; i < list.length; i += 500) {
     const part = list.slice(i, i + 500);
-    out.push(...(await q<Offer[]>(db.rpc('store_offers', { p_store: storeId, ...(by.barcodes ? { p_barcodes: part } : { p_variants: part }) }))));
+    out.push(...(await listOffersByBarcodes(storeId, by.barcodes, part)));
   }
   return out.filter((o) => o.price != null);
 }

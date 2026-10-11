@@ -3,7 +3,6 @@ import { generateBarcode } from '../../lib/barcode';
 import { parseNum } from '../../lib/format';
 import { findPhoto, removeProductPhoto, uploadProductPhoto } from '../../lib/photo';
 import { useCompany } from '../../lib/session';
-import { db, q } from '../../lib/supabase';
 import { UNITS, type CompanyProduct, type Unit, type Variant } from '../../lib/types';
 import { fullName, sizeHints, splitName } from '../../lib/variants';
 import { Icon } from '../../ui/Icon';
@@ -12,6 +11,8 @@ import { ProductImage } from '../../ui/ProductImage';
 import { SuggestInput } from '../../ui/SuggestInput';
 import { toast } from '../../ui/toast';
 import { useAction } from '../../ui/useAction';
+import { findCatalogProduct } from '../../api/products';
+import { saveCompanyProduct, setProductImage } from '../../api/company';
 
 interface Row {
   key: number;
@@ -86,9 +87,7 @@ export function ProductEditor({ product, variants = [], stock, duplicate, catego
   const lookup = async (row: Row) => {
     const code = row.barcode.trim();
     if (!code || (form.name.trim() && row.label.trim())) return;
-    const found = await q<{ name: string; unit: Unit; category: string; subcategory: string } | null>(
-      db.from('catalog_products').select('name, unit, category, subcategory').eq('barcode', code).maybeSingle(),
-    ).catch(() => null);
+    const found = await findCatalogProduct(code).catch(() => null);
     if (!found) return;
     const parts = splitName(found.name);
     setForm((f) => ({ ...f, name: f.name.trim() || parts.product, category: f.category.trim() || found.subcategory || found.category }));
@@ -116,7 +115,7 @@ export function ProductEditor({ product, variants = [], stock, duplicate, catego
       const before = form.image.trim();
       setForm((cur) => ({ ...cur, image: url }));
       if (!isNew) {
-        await q(db.from('company_products').update({ image_url: url }).eq('id', product!.id));
+        await setProductImage(url, product!.id);
         toast.ok('Фото загружено и сохранено в товаре');
         onSaved(product!.id);
       } else toast.ok('Фото загружено: оно сохранится вместе с товаром');
@@ -139,10 +138,10 @@ export function ProductEditor({ product, variants = [], stock, duplicate, catego
     const labels = rows.map((r) => r.label.trim().toLowerCase());
     if (rows.length > 1 && new Set(labels).size < labels.length) return toast.error('У видов должны быть разные подписи: например, «0,5 л» и «1 л»');
     await run(async () => {
-      const id = await q<string>(db.rpc('save_company_product', {
-        p_org: org.id,
-        p_product: { id: isNew ? null : product!.id, name: form.name, category: form.category, description: form.description, image_url: form.image.trim() },
-        p_variants: rows.map((r) => ({
+      const id = await saveCompanyProduct(
+        org.id,
+        { id: isNew ? null : product!.id, name: form.name, category: form.category, description: form.description, imageUrl: form.image.trim() },
+        rows.map((r) => ({
           id: r.id ?? null, label: r.label,
           // пустой штрихкод — внутренний код: товар без заводского кода тоже можно продавать
           barcode: r.barcode.trim() || generateBarcode(r.unit), unit: r.unit, price: parseNum(r.price),
@@ -150,7 +149,7 @@ export function ProductEditor({ product, variants = [], stock, duplicate, catego
           min_stock: r.track && r.min.trim() ? Math.max(parseNum(r.min), 0) : null,
           stock: r.track ? Object.fromEntries(Object.entries(r.stock).filter(([, v]) => v.trim() !== '').map(([b, v]) => [b, Math.max(parseNum(v), 0)])) : null,
         })),
-      }));
+      );
       toast.ok(isNew ? `Товар опубликован: ${form.name.trim()}` : 'Сохранено');
       onSaved(id);
       if (more) {

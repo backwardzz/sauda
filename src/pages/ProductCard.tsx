@@ -6,7 +6,6 @@ import { useChanged, useQuery } from '../lib/hooks';
 import { fullProductName } from '../lib/productAttrs';
 import { categoryTree, useCategories, useContractors, useQuickGroups } from '../lib/refs';
 import { useWorkspace } from '../lib/session';
-import { db, q } from '../lib/supabase';
 import { MOVE_REASON, PACK_UNITS, PACKAGES, SIZE_UNITS, UNITS, type PackUnit, type Product, type SizeUnit, type StockMove, type Unit } from '../lib/types';
 import { DataTable, type Column } from '../ui/DataTable';
 import { Icon } from '../ui/Icon';
@@ -14,6 +13,7 @@ import { Confirm } from '../ui/Modal';
 import { toast } from '../ui/toast';
 import { CategoryModal } from './CategoryModal';
 import { useAction } from '../ui/useAction';
+import { addProduct, archiveProduct, getProduct, listProductStock, listStockMoves, updateProduct } from '../api/products';
 
 interface Form {
   /** Название без объёма, процента и упаковки: они в своих полях. */
@@ -75,20 +75,17 @@ export function ProductCard() {
   const [catModal, setCatModal] = useState(false);
 
   const product = useQuery(
-    async () => (id ? q<Product>(db.from('products').select('*').eq('id', id).eq('org_id', org.id).single()) : null),
+    async () => (id ? getProduct(id, org.id) : null),
     [id, org.id],
   );
   const stock = useQuery(
-    async () => (id ? q<{ store_id: string; qty: number }[]>(db.from('stock').select('store_id, qty').eq('product_id', id)) : []),
+    async () => (id ? listProductStock(id) : []),
     [id],
   );
   const moves = useQuery(
     async () =>
       id && tab === 'moves'
-        ? q<StockMove[]>(
-            db.from('stock_moves').select('id, delta, qty_after, reason, ref_number, created_at')
-              .eq('product_id', id).eq('store_id', store.id).order('id', { ascending: false }).limit(200),
-          )
+        ? listStockMoves(id, store.id)
         : [],
     [id, tab, store.id],
   );
@@ -159,8 +156,8 @@ export function ProductCard() {
         quick_group_id: form.quickGroup || null,
         quick_name: form.quickName.trim(),
       };
-      if (id) await q(db.from('products').update(row).eq('id', id));
-      else await q(db.from('products').insert(row));
+      if (id) await updateProduct(row, id);
+      else await addProduct(row);
       toast.ok(id ? 'Изменения сохранены' : kind === 'service' ? 'Услуга создана' : 'Товар создан');
       navigate('/products');
     }, { keepBusy: true });
@@ -169,7 +166,7 @@ export function ProductCard() {
   const remove = async () => {
     if (!id) return;
     await run(async () => {
-      await q(db.from('products').update({ archived: true, quick_group_id: null }).eq('id', id));
+      await archiveProduct(id);
       toast.ok('Товар удалён');
       navigate('/products');
     }, { keepBusy: true });

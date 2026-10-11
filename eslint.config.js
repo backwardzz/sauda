@@ -16,6 +16,20 @@ export default tseslint.config(
     rules: reactHooks.configs.recommended.rules,
   },
   {
+    // Слой данных: названия таблиц, столбцов и функций базы знает только src/api.
+    files: ['src/**/*.{ts,tsx}'],
+    ignores: ['src/api/**', 'src/lib/supabase.ts'],
+    rules: {
+      'no-restricted-imports': ['error', {
+        patterns: [{
+          group: ['**/lib/supabase', './supabase'],
+          importNames: ['db'],
+          message: 'Обращения к базе — только через модули src/api. Добавьте функцию туда и вызовите её.',
+        }],
+      }],
+    },
+  },
+  {
     files: ['scripts/**/*.ts', '*.config.{js,ts}'],
     languageOptions: { globals: globals.node },
   },

@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { parseNum } from '../lib/format';
-import { db, q } from '../lib/supabase';
 import type { Category } from '../lib/types';
 import { Modal } from '../ui/Modal';
 import { toast } from '../ui/toast';
 import { useAction } from '../ui/useAction';
+import { addCategory, deleteCategory, updateCategory } from '../api/products';
 
 interface Props {
   orgId: string;
@@ -27,8 +27,8 @@ export function CategoryModal({ orgId, category, categories, onClose, onSaved }:
     await run(async () => {
       const row = { org_id: orgId, name: name.trim(), markup_pct: parseNum(markup), parent_id: parent || null };
       const saved = category
-        ? await q<Category>(db.from('categories').update(row).eq('id', category.id).select().single())
-        : await q<Category>(db.from('categories').insert(row).select().single());
+        ? await updateCategory(row, category.id)
+        : await addCategory(row);
       toast.ok(category ? 'Категория сохранена' : 'Категория создана');
       onSaved(saved);
     }, { keepBusy: true });
@@ -37,7 +37,7 @@ export function CategoryModal({ orgId, category, categories, onClose, onSaved }:
   const remove = async () => {
     if (!category) return;
     await run(async () => {
-      await q(db.from('categories').delete().eq('id', category.id));
+      await deleteCategory(category.id);
       toast.ok('Категория удалена, товары остались без категории');
       onSaved();
     }, { keepBusy: true });

@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { dateTime, marginPct, money, qty } from '../../lib/format';
 import { useQuery } from '../../lib/hooks';
 import { useTeamNames } from '../../lib/refs';
-import { db, q } from '../../lib/supabase';
 import type { Sale } from '../../lib/types';
 import { exportXlsx } from '../../lib/xlsx';
 import { DataTable, type Column } from '../../ui/DataTable';
@@ -10,6 +9,7 @@ import { Icon } from '../../ui/Icon';
 import { toast } from '../../ui/toast';
 import { SaleModal } from '../SaleModal';
 import { useReportScope, type SalesRow } from './common';
+import { reportSalesBy, listSalesInRange } from '../../api/reports';
 
 const TABS = [
   { key: 'product', label: 'По товарам', column: 'Название товара' },
@@ -30,16 +30,13 @@ export function SalesStats() {
   const cur = scope.org.currency;
 
   const grouped = useQuery(
-    async () => (tab === 'receipt' ? [] : q<SalesRow[]>(db.rpc('report_sales', { ...scope.args, p_group: tab }))),
+    async () => (tab === 'receipt' ? [] : reportSalesBy(scope.args, tab)),
     [tab, scope.args.p_org, scope.args.p_from, scope.args.p_to, scope.args.p_store],
   );
 
   const receipts = useQuery(async () => {
     if (tab !== 'receipt') return [];
-    let query = db.from('sales').select('*').eq('org_id', scope.org.id)
-      .gte('created_at', scope.range.from).lt('created_at', scope.range.to);
-    if (scope.storeId) query = query.eq('store_id', scope.storeId);
-    return q<Sale[]>(query.order('created_at', { ascending: false }).limit(2000));
+    return listSalesInRange(scope.org.id, scope.range.from, scope.range.to, scope.storeId);
   }, [tab, scope.org.id, scope.range.from, scope.range.to, scope.storeId]);
 
   const term = search.trim().toLowerCase();

@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { db, errorText, q } from '../lib/supabase';
+import { errorText } from '../lib/supabase';
 import { useSession } from '../lib/session';
 import { useAction } from '../ui/useAction';
+import { createOrg } from '../api/org';
 
 /**
  * Первый вход: у пользователя ещё нет организации.
@@ -27,13 +28,10 @@ export function Onboarding() {
   const create = () => {
     setError(null);
     return run(async () => {
-      await q(db.rpc('create_org', {
-        p_name: meta.org_name ?? '', p_store: meta.org_name ?? '', p_kind: kind, p_business: business, p_city: meta.city_id ?? null,
-        p_profile: {
-          phone: meta.phone ?? '', address: '', bin: '', email: user?.email ?? '', contact_name: meta.full_name ?? meta.name ?? '',
-          ...(isStore ? {} : { company_type: 'distributor', description: '' }),
-        },
-      }));
+      await createOrg({
+        name: meta.org_name ?? '', kind, business, cityId: meta.city_id ?? null,
+        phone: meta.phone ?? '', email: user?.email ?? '', contactName: meta.full_name ?? meta.name ?? '',
+      });
       // новой торговой точке сразу предлагаются пакеты ходовых товаров с ценами компаний
       if (isStore && business === 'grocery') navigate('/catalog/starter');
       await reload();

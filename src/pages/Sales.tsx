@@ -3,11 +3,11 @@ import { dateTime, money } from '../lib/format';
 import { useChanged, useQuery, useStored } from '../lib/hooks';
 import { useTeamNames } from '../lib/refs';
 import { useWorkspace } from '../lib/session';
-import { db } from '../lib/supabase';
 import type { Sale } from '../lib/types';
 import { DataTable, Pager, type Column } from '../ui/DataTable';
 import { lastDays, PeriodPicker, periodRange } from '../ui/Period';
 import { SaleModal } from './SaleModal';
+import { listSalesPage } from '../api/pos';
 
 interface Row extends Sale {
   registers: { name: string } | null;
@@ -28,18 +28,10 @@ export function Sales({ kind }: { kind: 'sale' | 'return' }) {
 
   const list = useQuery(async () => {
     const { from, to } = periodRange(period);
-    let query = db.from('sales')
-      .select('*, registers(name), contractors(name), parent:sales!parent_id(number)', { count: 'exact' })
-      .eq('org_id', org.id).eq('store_id', store.id).eq('kind', kind);
     // номер чека ищется по всем датам: покупатель с чеком приходит и через месяц
     const n = Number(number);
-    if (number.trim() && Number.isInteger(n)) query = query.eq('number', n);
-    else query = query.gte('created_at', from).lt('created_at', to);
-    const { data, count, error } = await query
-      .order('created_at', { ascending: false })
-      .range(page * pageSize, page * pageSize + pageSize - 1);
-    if (error) throw error;
-    return { rows: (data ?? []) as unknown as Row[], total: count ?? 0 };
+    const byNumber = number.trim() !== '' && Number.isInteger(n);
+    return listSalesPage<Row>(org.id, store.id, kind, byNumber ? { number: n } : { from, to }, page, pageSize);
   }, [org.id, store.id, kind, period, number, page, pageSize]);
 
   const rows = list.data?.rows ?? [];

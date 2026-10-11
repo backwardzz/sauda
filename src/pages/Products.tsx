@@ -5,7 +5,7 @@ import { useChanged, useDebounced, useQuery, useStored } from '../lib/hooks';
 import { packText, percentText, sizeText } from '../lib/productAttrs';
 import { categoryTree, useCategories, useContractors, useQuickGroups } from '../lib/refs';
 import { useWorkspace } from '../lib/session';
-import { db, q, safeTerm } from '../lib/supabase';
+import { safeTerm } from '../lib/supabase';
 import type { Category, Product } from '../lib/types';
 import { exportXlsx } from '../lib/xlsx';
 import { DataTable, Pager, type Column, type Sort } from '../ui/DataTable';
@@ -15,6 +15,7 @@ import { toast } from '../ui/toast';
 import { CategoryModal } from './CategoryModal';
 import { ImportModal } from './ImportModal';
 import { useAction } from '../ui/useAction';
+import { productsPageQuery, updateProducts } from '../api/products';
 
 interface Filters {
   supplier: string;
@@ -169,7 +170,7 @@ export function Products() {
       : { quick_group_id: bulkValue || null };
     if (bulk === 'quick' && !bulkValue) return toast.error('Выберите группу быстрых товаров');
     await run(async () => {
-      await q(db.from('products').update(patch).in('id', ids).eq('org_id', org.id));
+      await updateProducts(patch, ids, org.id);
       toast.ok(bulk === 'delete' ? `Удалено товаров: ${ids.length}` : `Изменено товаров: ${ids.length}`);
       setSelected(new Set());
       setBulk(null);
