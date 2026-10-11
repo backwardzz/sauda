@@ -14,6 +14,7 @@ import { Confirm, Modal } from '../ui/Modal';
 import { toast } from '../ui/toast';
 import { CategoryModal } from './CategoryModal';
 import { ImportModal } from './ImportModal';
+import { useAction } from '../ui/useAction';
 
 interface Filters {
   supplier: string;
@@ -51,7 +52,7 @@ export function Products() {
   const [importOpen, setImportOpen] = useState(false);
   const [bulk, setBulk] = useState<Bulk | null>(null);
   const [bulkValue, setBulkValue] = useState('');
-  const [busy, setBusy] = useState(false);
+  const [busy, run] = useAction();
   const menus = useRef<HTMLDivElement>(null);
 
   if (useChanged([term, category, filters, pageSize]) && page !== 0) setPage(0);
@@ -167,18 +168,13 @@ export function Products() {
       : bulk === 'supplier' ? { supplier_id: bulkValue || null }
       : { quick_group_id: bulkValue || null };
     if (bulk === 'quick' && !bulkValue) return toast.error('Выберите группу быстрых товаров');
-    setBusy(true);
-    try {
+    await run(async () => {
       await q(db.from('products').update(patch).in('id', ids).eq('org_id', org.id));
       toast.ok(bulk === 'delete' ? `Удалено товаров: ${ids.length}` : `Изменено товаров: ${ids.length}`);
       setSelected(new Set());
       setBulk(null);
       list.reload();
-    } catch (e) {
-      toast.error(e);
-    } finally {
-      setBusy(false);
-    }
+    });
   };
 
   const openBulk = (b: Bulk) => {
