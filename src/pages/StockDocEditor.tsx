@@ -5,25 +5,19 @@ import { dateTime, markupPct, money, parseNum, qty as fmtQty, round2, round3 } f
 import { useChanged, useQuery } from '../lib/hooks';
 import { useContractors, useTeamNames } from '../lib/refs';
 import { useWorkspace } from '../lib/session';
-import { db, errorText, q } from '../lib/supabase';
-import type { DocLine, Product, StockDoc } from '../lib/types';
+import { errorText } from '../lib/supabase';
+import type { DocLine, Product } from '../lib/types';
 import { exportXlsx } from '../lib/xlsx';
 import { Icon } from '../ui/Icon';
 import { Confirm, Modal } from '../ui/Modal';
 import { ProductSearch } from '../ui/ProductSearch';
 import { toast } from '../ui/toast';
+import { useAction } from '../ui/useAction';
+import { deleteStockDoc, getStockDoc, getStockQty, listDocPayments, paySupply, postStockDoc, setStockDocItem, updateStockDoc } from '../api/docs';
 
 const VISIBLE = 300;
 // пока строки грузятся — один и тот же пустой список, чтобы фильтры ниже не пересчитывались на каждом рендере
 const NO_LINES: DocLine[] = [];
-
-interface Payment {
-  id: string;
-  amount: number;
-  comment: string;
-  created_at: string;
-  created_by: string | null;
-}
 
 export function StockDocEditor() {
   const { kind, id } = useParams();
@@ -33,7 +27,7 @@ export function StockDocEditor() {
   const suppliers = useContractors(org.id, 'supplier');
 
   const doc = useQuery(
-    async () => (id ? q<StockDoc | null>(db.from('stock_docs').select('*').eq('id', id).eq('org_id', org.id).maybeSingle()) : null),
+    async () => (id ? getStockDoc(id, org.id) : null),
     [id, org.id],
   );
   const [lines, setLines] = useState<DocLine[] | null>(null);
@@ -42,7 +36,7 @@ export function StockDocEditor() {
   const [search, setSearch] = useState('');
   const [onlyDiff, setOnlyDiff] = useState(false);
   const [bump, setBump] = useState(0);
-  const [busy, setBusy] = useState(false);
+  const [busy, run] = useAction();
   const [confirm, setConfirm] = useState<'post' | 'delete' | null>(null);
   const [zeroMissing, setZeroMissing] = useState(false);
   const [payAmount, setPayAmount] = useState('');
@@ -67,7 +61,7 @@ export function StockDocEditor() {
   const payments = useQuery(
     async () =>
       d && d.kind === 'supply' && d.status === 'posted'
-        ? q<Payment[]>(db.from('doc_payments').select('*').eq('doc_id', d.id).order('created_at'))
+        ? listDocPayments(d.id)
         : [],
     [d?.id, d?.status, d?.paid],
   );
@@ -102,13 +96,11 @@ export function StockDocEditor() {
 
   const saveHeader = async (patch: { comment?: string; supplier?: string | null; toStore?: string | null }) => {
     try {
-      await q(
-        db.rpc('update_stock_doc', {
-          p_doc: d.id,
-          p_comment: patch.comment ?? comment,
-          p_supplier: patch.supplier !== undefined ? patch.supplier : d.supplier_id,
-          p_to_store: patch.toStore !== undefined ? patch.toStore : d.to_store_id,
-        }),
+      await updateStockDoc(
+        d.id,
+        patch.comment ?? comment,
+        patch.supplier !== undefined ? patch.supplier : d.supplier_id,
+        patch.toStore !== undefined ? patch.toStore : d.to_store_id,
       );
       doc.reload();
     } catch (e) {
@@ -117,7 +109,7 @@ export function StockDocEditor() {
   };
 
   const setItem = (productId: string, l: { qty: number | null; price?: number; sale_price?: number | null }) =>
-    q(db.rpc('set_stock_doc_item', { p_doc: d.id, p_product: productId, p_qty: l.qty, p_price: l.price ?? null, p_sale_price: l.sale_price ?? null }));
+    setStockDocItem(d.id, productId, l.qty, l.price, l.sale_price);
 
   const add = async (product: Product, weight?: number) => {
     const existing = all.find((l) => l.product_id === product.id);
@@ -127,9 +119,7 @@ export function StockDocEditor() {
       await setItem(product.id, { qty: next, price, sale_price: existing?.sale_price ?? null });
       let stock = existing?.stock;
       if (stock == null) {
-        const row = await q<{ qty: number } | null>(
-          db.from('stock').select('qty').eq('store_id', d.store_id).eq('product_id', product.id).maybeSingle(),
-        );
+        const row = await getStockQty(d.store_id, product.id);
         stock = Number(row?.qty ?? 0);
       }
       const line: DocLine = {
@@ -171,46 +161,33 @@ export function StockDocEditor() {
   };
 
   const post = async () => {
-    setBusy(true);
-    try {
-      await q(db.rpc('post_stock_doc_draft', { p_doc: d.id, p_zero_missing: validKind === 'inventory' && zeroMissing }));
+    const done = await run(async () => {
+      await postStockDoc(d.id, validKind, zeroMissing);
       toast.ok(meta.posted);
       back();
-    } catch (e) {
-      toast.error(e);
-      setBusy(false);
-      setConfirm(null);
-    }
+    }, { keepBusy: true });
+    if (!done) setConfirm(null);
   };
 
   const removeDoc = async () => {
-    setBusy(true);
-    try {
-      await q(db.rpc('delete_stock_doc', { p_doc: d.id }));
+    const done = await run(async () => {
+      await deleteStockDoc(d.id);
       toast.ok('Черновик удалён');
       back();
-    } catch (e) {
-      toast.error(e);
-      setBusy(false);
-      setConfirm(null);
-    }
+    }, { keepBusy: true });
+    if (!done) setConfirm(null);
   };
 
   const pay = async () => {
     const amount = payAmount.trim() === '' ? debt : parseNum(payAmount);
     if (amount <= 0) return toast.error('Укажите сумму');
-    setBusy(true);
-    try {
-      await q(db.rpc('pay_supply', { p_doc: d.id, p_amount: amount, p_comment: payComment.trim() }));
+    await run(async () => {
+      await paySupply(d.id, amount, payComment);
       toast.ok('Платёж записан');
       setPayAmount('');
       setPayComment('');
       doc.reload();
-    } catch (e) {
-      toast.error(e);
-    } finally {
-      setBusy(false);
-    }
+    });
   };
 
   const download = () => {

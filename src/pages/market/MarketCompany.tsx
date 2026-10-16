@@ -4,14 +4,16 @@ import { clampQty, loadOffers, suggestQty, useCart } from '../../lib/cart';
 import { money, parseNum, plural, qty as fmtQty, round2 } from '../../lib/format';
 import { useQuery } from '../../lib/hooks';
 import { useWorkspace } from '../../lib/session';
-import { db, q } from '../../lib/supabase';
-import { COMPANY_TYPE, type CompanyCard, type Offer, type PriceAccess, type StockRow } from '../../lib/types';
+import { COMPANY_TYPE, type Offer, type StockRow } from '../../lib/types';
 import { fullName } from '../../lib/variants';
 import { CompanyAvatar, VerifiedBadge } from '../../ui/CompanyAvatar';
 import { Icon } from '../../ui/Icon';
 import { ProductImage } from '../../ui/ProductImage';
 import { PhoneLink } from '../../ui/PhoneLink';
 import { toast } from '../../ui/toast';
+import { useAction } from '../../ui/useAction';
+import { companyDirectory, placeOrder, priceAccess, requestPriceAccess } from '../../api/market';
+import { listStockByBarcodes } from '../../api/products';
 
 type Mine = Pick<StockRow, 'barcode' | 'qty' | 'min_stock' | 'low' | 'unit'>;
 const NO_STOCK = new Map<string, Mine>();
@@ -27,19 +29,19 @@ export function MarketCompany() {
   const [onlyLow, setOnlyLow] = useState(false);
   const [onlyCart, setOnlyCart] = useState(false);
   const [comment, setComment] = useState('');
-  const [busy, setBusy] = useState(false);
+  const [busy, run] = useAction();
 
-  const company = useQuery(async () => (await q<CompanyCard[]>(db.rpc('company_directory'))).find((c) => c.id === id) ?? null, [id]);
+  const company = useQuery(async () => (await companyDirectory()).find((c) => c.id === id) ?? null, [id]);
   const catalog = useQuery(() => loadOffers(store.id, { company: id }), [id, store.id]);
   const access = useQuery(
-    () => q<PriceAccess>(db.rpc('price_access', { p_company: id, p_store_org: org.id })),
+    () => priceAccess(id, org.id),
     [id, org.id],
   );
   const [requesting, setRequesting] = useState(false);
   const requestPrices = async () => {
     setRequesting(true);
     try {
-      await q(db.rpc('request_price_access', { p_company: id, p_store_org: org.id }));
+      await requestPriceAccess(id, org.id);
       toast.ok('Запрос отправлен компании');
       access.reload();
     } catch (e) {
@@ -53,9 +55,7 @@ export function MarketCompany() {
     const codes = (catalog.data ?? []).map((p) => p.barcode).filter((c) => /^[\w-]+$/.test(c));
     const map = new Map<string, Mine>();
     for (let i = 0; i < codes.length; i += 200) {
-      const rows = await q<Mine[]>(
-        db.from('product_stock').select('barcode, qty, min_stock, low, unit').eq('store_id', store.id).eq('archived', false).in('barcode', codes.slice(i, i + 200)),
-      );
+      const rows = await listStockByBarcodes(store.id, codes.slice(i, i + 200));
       rows.forEach((r) => map.set(r.barcode, r));
     }
     return map;
@@ -102,22 +102,13 @@ export function MarketCompany() {
   };
 
   const submit = async () => {
-    setBusy(true);
-    try {
-      const orderId = await q<string>(
-        db.rpc('place_order', {
-          p_store: store.id, p_supplier: id, p_comment: comment.trim(),
-          p_items: lines.map((o) => ({ variant_id: o.variant_id, qty: cart[o.variant_id] })),
-        }),
-      );
+    const sent = await run(async () => {
+      const orderId = await placeOrder(store.id, id, comment.trim(), lines.map((o) => ({ variantId: o.variant_id, qty: cart[o.variant_id] })));
       clear();
       toast.ok('Заказ отправлен компании');
       navigate(`/orders/${orderId}`);
-    } catch (e) {
-      toast.error(e);
-      setBusy(false);
-      catalog.reload();
-    }
+    }, { keepBusy: true });
+    if (!sent) catalog.reload();
   };
 
   if (company.loading && !c) return <div className="empty">Загрузка…</div>;

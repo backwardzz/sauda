@@ -1,24 +1,13 @@
 import { money } from '../../lib/format';
 import { useQuery } from '../../lib/hooks';
-import { db, q } from '../../lib/supabase';
 import { DataTable, type Column } from '../../ui/DataTable';
 import { useReportScope } from './common';
-
-interface Row {
-  cashier_id: string | null;
-  cashier_name: string;
-  sales_sum: number;
-  card_sum: number;
-  cash_sum: number;
-  returns_sum: number;
-  total: number;
-  receipts: number;
-}
+import { type CashierRow as Row, reportCashiers } from '../../api/reports';
 
 export function CashiersReport() {
   const scope = useReportScope();
   const data = useQuery(
-    () => q<Row[]>(db.rpc('report_cashiers', scope.args)),
+    () => reportCashiers(scope.args),
     [scope.args.p_org, scope.args.p_from, scope.args.p_to, scope.args.p_store],
   );
   const rows = data.data ?? [];

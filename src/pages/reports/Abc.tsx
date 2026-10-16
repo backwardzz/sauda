@@ -2,12 +2,12 @@ import { useMemo, useState } from 'react';
 import { money, qty } from '../../lib/format';
 import { useQuery } from '../../lib/hooks';
 import { grade, type Grade } from '../../lib/abc';
-import { db, q } from '../../lib/supabase';
 import { exportXlsx } from '../../lib/xlsx';
 import { DataTable, type Column } from '../../ui/DataTable';
 import { Icon } from '../../ui/Icon';
 import { toast } from '../../ui/toast';
 import { useReportScope, type SalesRow } from './common';
+import { reportSalesByProduct } from '../../api/reports';
 
 interface AbcRow extends SalesRow {
   n: number;
@@ -23,7 +23,7 @@ export function AbcReport() {
   const [only, setOnly] = useState<Grade | ''>('');
 
   const data = useQuery(
-    () => q<SalesRow[]>(db.rpc('report_sales', { ...scope.args, p_group: 'product' })),
+    () => reportSalesByProduct(scope.args),
     [scope.args.p_org, scope.args.p_from, scope.args.p_to, scope.args.p_store],
   );
 

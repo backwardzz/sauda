@@ -1,5 +1,6 @@
-import { db, q, safeTerm } from './supabase';
+import { q, safeTerm } from './supabase';
 import type { Product, Unit } from './types';
+import { activeProductsQuery, findProducts } from '../api/products';
 
 function ean13Check(first12: string): number {
   let sum = 0;
@@ -31,7 +32,7 @@ export interface Lookup {
 export async function findByBarcode(orgId: string, raw: string): Promise<Lookup | null> {
   const code = raw.trim();
   if (!code) return null;
-  const base = () => db.from('products').select('*').eq('org_id', orgId).eq('archived', false);
+  const base = () => activeProductsQuery(orgId);
 
   const plain = /^[\w-]+$/.test(code);
   const exact = await q<Product[]>(
@@ -50,9 +51,5 @@ export async function findByBarcode(orgId: string, raw: string): Promise<Lookup 
 export async function searchProducts(orgId: string, text: string, limit = 12): Promise<Product[]> {
   const term = safeTerm(text);
   if (!term) return [];
-  return q<Product[]>(
-    db.from('products').select('*').eq('org_id', orgId).eq('archived', false)
-      .or(`name.ilike.%${term}%,barcode.ilike.${term}%,sku.ilike.${term}%`)
-      .order('name').limit(limit),
-  );
+  return findProducts(orgId, term, limit);
 }

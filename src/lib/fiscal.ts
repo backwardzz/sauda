@@ -1,8 +1,8 @@
-import { db } from './supabase';
+import { invokeFunction } from '../api/files';
 
 /** Ответ серверной функции fiscal: ошибка приходит текстом для кассира. */
 async function invoke(body: Record<string, string>): Promise<{ sent?: number; failed?: number }> {
-  const { data, error } = await db.functions.invoke('fiscal', { body });
+  const { data, error } = await invokeFunction('fiscal', body);
   if (error) {
     // у FunctionsHttpError текст ошибки лежит в теле ответа
     const ctx = (error as { context?: Response }).context;

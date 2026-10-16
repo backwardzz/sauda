@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { db, errorText, q } from '../lib/supabase';
+import { errorText } from '../lib/supabase';
 import { useSession } from '../lib/session';
+import { useAction } from '../ui/useAction';
+import { createOrg } from '../api/org';
 
 /**
  * Первый вход: у пользователя ещё нет организации.
@@ -19,28 +21,21 @@ export function Onboarding() {
   const business = meta.business === 'pharmacy' ? 'pharmacy' : 'grocery';
   // всё нужное спросила форма регистрации; адрес, БИН, тип и описание компании заполняются позже в профиле
   const complete = (meta.account_kind === 'store' || meta.account_kind === 'company') && !!meta.org_name?.trim() && typeof meta.city_id === 'number';
-  const [busy, setBusy] = useState(complete);
+  const [busy, run] = useAction(complete);
   const [error, setError] = useState<string | null>(null);
   const started = useRef(false);
 
-  const create = async () => {
-    setBusy(true);
+  const create = () => {
     setError(null);
-    try {
-      await q(db.rpc('create_org', {
-        p_name: meta.org_name ?? '', p_store: meta.org_name ?? '', p_kind: kind, p_business: business, p_city: meta.city_id ?? null,
-        p_profile: {
-          phone: meta.phone ?? '', address: '', bin: '', email: user?.email ?? '', contact_name: meta.full_name ?? meta.name ?? '',
-          ...(isStore ? {} : { company_type: 'distributor', description: '' }),
-        },
-      }));
+    return run(async () => {
+      await createOrg({
+        name: meta.org_name ?? '', kind, business, cityId: meta.city_id ?? null,
+        phone: meta.phone ?? '', email: user?.email ?? '', contactName: meta.full_name ?? meta.name ?? '',
+      });
       // новой торговой точке сразу предлагаются пакеты ходовых товаров с ценами компаний
       if (isStore && business === 'grocery') navigate('/catalog/starter');
       await reload();
-    } catch (err) {
-      setError(errorText(err));
-      setBusy(false);
-    }
+    }, { keepBusy: true, onError: (e) => setError(errorText(e)) });
   };
 
   useEffect(() => {
@@ -72,7 +67,7 @@ export function Onboarding() {
               Попросите владельца пригласить этот адрес в разделе «Сотрудники» и войдите снова.
             </p>
             <button type="button" className="btn primary large" disabled={busy}
-              onClick={async () => { setBusy(true); await reload(); setBusy(false); }}>
+              onClick={() => run(reload)}>
               Проверить снова
             </button>
           </>

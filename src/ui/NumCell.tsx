@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useChanged } from '../lib/hooks';
 import { parseNum } from '../lib/format';
-import { toast } from './toast';
+import { useAction } from './useAction';
 
 interface Props {
   value: number | null;
@@ -19,22 +19,14 @@ const show = (v: number | null) => (v == null ? '' : String(Number(v)));
 /** Число прямо в таблице: правится на месте, сохраняется по Enter или при уходе из поля, Esc отменяет. */
 export function NumCell({ value, onSave, onClear, disabled, placeholder, ...rest }: Props) {
   const [text, setText] = useState(show(value));
-  const [busy, setBusy] = useState(false);
+  const [busy, run] = useAction();
   if (useChanged([value])) setText(show(value));
 
   const commit = async () => {
     const n = Math.max(parseNum(text), 0);
     const clear = text.trim() === '' && value != null && !!onClear;
     if (!clear && (text.trim() === '' || n === Number(value ?? NaN))) return setText(show(value));
-    setBusy(true);
-    try {
-      await (clear ? onClear!() : onSave(n));
-    } catch (e) {
-      toast.error(e);
-      setText(show(value));
-    } finally {
-      setBusy(false);
-    }
+    if (!(await run(() => (clear ? onClear!() : onSave(n))))) setText(show(value));
   };
 
   return (

@@ -3,7 +3,6 @@ import { cityLabel, cityName, useCities } from '../../lib/cities';
 import { formatPhone, parseNum, plural } from '../../lib/format';
 import { useQuery } from '../../lib/hooks';
 import { useOrg } from '../../lib/session';
-import { db, q } from '../../lib/supabase';
 import type { Branch } from '../../lib/types';
 import { CitySelect } from '../../ui/CitySelect';
 import { PhoneInput } from '../../ui/PhoneInput';
@@ -11,17 +10,13 @@ import { Icon } from '../../ui/Icon';
 import { Modal } from '../../ui/Modal';
 import { PhoneLink } from '../../ui/PhoneLink';
 import { toast } from '../../ui/toast';
+import { useAction } from '../../ui/useAction';
+import { addBranch, deleteBranch, listBranchZones, listBusyBranches, listStockedBranches, setBranchZones, setMainBranch, updateBranch } from '../../api/company';
 
 const EMPTY = {
   name: '', city: null as number | null, address: '', phone: '', manager: '', hours: '', main: false,
   markup: '', minOrder: '', delivery: '', regions: [] as number[], zoneCities: [] as number[],
 };
-
-interface Zone {
-  branch_id: string;
-  region_id: number | null;
-  city_id: number | null;
-}
 
 /** Филиалы компании по городам. Заказ магазина попадает в филиал его города, иначе — в главный. */
 export function Branches() {
@@ -32,14 +27,14 @@ export function Branches() {
   const canEdit = (b: Branch) => owner || (canManage && branchId === b.id);
   const [edit, setEdit] = useState<Branch | 'new' | null>(null);
   const [form, setForm] = useState(EMPTY);
-  const [busy, setBusy] = useState(false);
+  const [busy, act] = useAction();
   const set = (patch: Partial<typeof form>) => setForm({ ...form, ...patch });
 
   // чем занят каждый филиал: позиции на складе и заказы в работе
   const load = useQuery(async () => {
     const [stock, orders] = await Promise.all([
-      q<{ branch_id: string }[]>(db.from('company_stock').select('branch_id').eq('org_id', org.id).gt('qty', 0).limit(20000)),
-      q<{ branch_id: string | null }[]>(db.from('orders').select('branch_id').eq('supplier_org', org.id).in('status', ['new', 'confirmed']).limit(5000)),
+      listStockedBranches(org.id),
+      listBusyBranches(org.id),
     ]);
     const count = (rows: { branch_id: string | null }[]) => rows.reduce<Record<string, number>>((m, r) => (r.branch_id ? { ...m, [r.branch_id]: (m[r.branch_id] ?? 0) + 1 } : m), {});
     return { stock: count(stock), orders: count(orders) };
@@ -54,7 +49,7 @@ export function Branches() {
   }, [branches, cities]);
 
   // зоны обслуживания: области целиком и отдельные города, куда возит филиал
-  const zones = useQuery(() => q<Zone[]>(db.from('company_branch_zones').select('branch_id, region_id, city_id').eq('org_id', org.id)), [org.id, branches]);
+  const zones = useQuery(() => listBranchZones(org.id), [org.id, branches]);
   const regions = useMemo(() => {
     const seen = new Map<number, string>();
     for (const c of cities) if (c.region_sort > 0 && !seen.has(c.region_id)) seen.set(c.region_id, c.region);
@@ -80,17 +75,12 @@ export function Branches() {
   };
 
   const run = async (fn: () => Promise<unknown>, ok: string) => {
-    setBusy(true);
-    try {
+    await act(async () => {
       await fn();
       toast.ok(ok);
       setEdit(null);
       await reload();
-    } catch (e) {
-      toast.error(e);
-    } finally {
-      setBusy(false);
-    }
+    });
   };
 
   const save = () => {
@@ -104,11 +94,11 @@ export function Branches() {
     };
     void run(async () => {
       const id = edit === 'new'
-        ? (await q<Branch>(db.from('company_branches').insert({ org_id: org.id, city_id: form.city!, ...row }).select().single())).id
-        : (await q(db.from('company_branches').update(row).eq('id', (edit as Branch).id)), (edit as Branch).id);
+        ? (await addBranch(org.id, form.city, row)).id
+        : (await updateBranch(row, (edit as Branch).id), (edit as Branch).id);
       if (!owner) return;
-      await q(db.rpc('set_branch_zones', { p_branch: id, p_regions: form.regions, p_cities: form.zoneCities }));
-      if (form.main && !(edit !== 'new' && (edit as Branch).is_main)) await q(db.rpc('set_main_branch', { p_branch: id }));
+      await setBranchZones(id, form.regions, form.zoneCities);
+      if (form.main && !(edit !== 'new' && (edit as Branch).is_main)) await setMainBranch(id);
     }, edit === 'new' ? 'Филиал добавлен' : 'Сохранено');
   };
 
@@ -164,7 +154,7 @@ export function Branches() {
           footer={
             <>
               {owner && edit !== 'new' && !edit.is_main && (
-                <button className="btn danger" disabled={busy} onClick={() => run(() => q(db.rpc('delete_company_branch', { p_branch: (edit as Branch).id })), 'Филиал удалён')}>
+                <button className="btn danger" disabled={busy} onClick={() => run(() => deleteBranch((edit as Branch).id), 'Филиал удалён')}>
                   Удалить
                 </button>
               )}

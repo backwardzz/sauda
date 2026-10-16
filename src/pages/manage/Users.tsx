@@ -2,12 +2,13 @@ import { useState } from 'react';
 import { dateOnly } from '../../lib/format';
 import { useQuery } from '../../lib/hooks';
 import { useOrg } from '../../lib/session';
-import { db, q } from '../../lib/supabase';
 import { ROLE_LABEL, type Role } from '../../lib/types';
 import { DataTable, type Column } from '../../ui/DataTable';
 import { Icon } from '../../ui/Icon';
 import { Confirm, Modal } from '../../ui/Modal';
 import { toast } from '../../ui/toast';
+import { useAction } from '../../ui/useAction';
+import { addInvite, deleteInvite, type Invite, listInvites, listMembers, listProfiles, removeMember, setMemberBranch, setMemberRole } from '../../api/org';
 
 interface Member {
   user_id: string;
@@ -17,14 +18,6 @@ interface Member {
   branch_id: string | null;
   name: string;
   email: string;
-}
-
-interface Invite {
-  id: string;
-  email: string;
-  role: Role;
-  branch_id: string | null;
-  created_at: string;
 }
 
 const ROLE_HINT: Record<Role, string> = {
@@ -56,14 +49,12 @@ export function Users() {
   const [inviteRole, setInviteRole] = useState<Role>('cashier');
   const [inviteBranch, setInviteBranch] = useState('');
   const [removing, setRemoving] = useState<Member | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [busy, run] = useAction();
 
   const members = useQuery(async () => {
     const [rows, profiles] = await Promise.all([
-      q<{ user_id: string; role: Role; created_at: string; branch_id: string | null }[]>(
-        db.from('org_members').select('user_id, role, created_at, branch_id').eq('org_id', org.id).order('created_at'),
-      ),
-      q<{ id: string; full_name: string; email: string }[]>(db.from('profiles').select('id, full_name, email')),
+      listMembers(org.id),
+      listProfiles(),
     ]);
     return rows.map<Member>((m) => {
       const p = profiles.find((x) => x.id === m.user_id);
@@ -72,22 +63,17 @@ export function Users() {
   }, [org.id]);
 
   const invites = useQuery(
-    async () => (canAdmin ? q<Invite[]>(db.from('invites').select('*').eq('org_id', org.id).order('created_at')) : []),
+    async () => (canAdmin ? listInvites(org.id) : []),
     [org.id, canAdmin],
   );
 
   const act = async (fn: () => Promise<unknown>, ok: string) => {
-    setBusy(true);
-    try {
+    await run(async () => {
       await fn();
       toast.ok(ok);
       members.reload();
       invites.reload();
-    } catch (e) {
-      toast.error(e);
-    } finally {
-      setBusy(false);
-    }
+    });
   };
 
   const invite = () => {
@@ -97,7 +83,7 @@ export function Users() {
     void act(async () => {
       // сотрудник филиала увидит только свой филиал; владельцем может быть только сотрудник головного офиса
       const branch = branchManager ? branchId : inviteRole === 'owner' ? null : inviteBranch || null;
-      await q(db.from('invites').insert({ org_id: org.id, email: value, role: inviteRole, branch_id: branch }));
+      await addInvite(org.id, value, inviteRole, branch);
       setInviting(false);
       setEmail('');
     }, 'Приглашение создано');
@@ -113,7 +99,7 @@ export function Users() {
       render: (m) =>
         canEdit(m) ? (
           <select value={m.role} disabled={busy} aria-label={`Должность: ${m.name}`}
-            onChange={(e) => act(() => q(db.from('org_members').update({ role: e.target.value as Role }).eq('org_id', org.id).eq('user_id', m.user_id)), 'Должность изменена')}>
+            onChange={(e) => act(() => setMemberRole(e.target.value, org.id, m.user_id), 'Должность изменена')}>
             {roles.map((r) => <option key={r} value={r}>{label(r)}</option>)}
           </select>
         ) : (
@@ -125,7 +111,7 @@ export function Users() {
       render: (m: Member) =>
         isOwner && m.user_id !== user.id && m.role !== 'owner' ? (
           <select value={m.branch_id ?? ''} disabled={busy} aria-label={`Филиал: ${m.name}`}
-            onChange={(e) => act(() => q(db.from('org_members').update({ branch_id: e.target.value || null }).eq('org_id', org.id).eq('user_id', m.user_id)),
+            onChange={(e) => act(() => setMemberBranch(e.target.value, org.id, m.user_id),
               e.target.value ? 'Сотрудник видит только этот филиал' : 'Сотрудник видит все филиалы')}>
             <option value="">Головной офис — все филиалы</option>
             {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
@@ -152,7 +138,7 @@ export function Users() {
     {
       key: 'actions', title: '', fixed: true, width: '50px',
       render: (i) => (
-        <button className="icon-btn small danger" onClick={() => act(() => q(db.from('invites').delete().eq('id', i.id)), 'Приглашение отменено')} aria-label="Отменить приглашение">
+        <button className="icon-btn small danger" onClick={() => act(() => deleteInvite(i.id), 'Приглашение отменено')} aria-label="Отменить приглашение">
           <Icon name="x" size={15} />
         </button>
       ),
@@ -220,7 +206,7 @@ export function Users() {
         <Confirm title="Убрать доступ" text={`${removing.name} (${removing.email}) больше не сможет войти в «${org.name}». Его чеки и смены сохранятся.`}
           confirmLabel="Убрать доступ" danger busy={busy} onClose={() => setRemoving(null)}
           onConfirm={() => act(async () => {
-            await q(db.from('org_members').delete().eq('org_id', org.id).eq('user_id', removing.user_id));
+            await removeMember(org.id, removing.user_id);
             setRemoving(null);
           }, 'Доступ убран')} />
       )}
