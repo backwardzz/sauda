@@ -4,15 +4,14 @@ import { readCart, writeCart } from '../../lib/cart';
 import { dateTime, money, parseNum, qty as fmtQty, round2 } from '../../lib/format';
 import { useChanged, useQuery } from '../../lib/hooks';
 import { useOrg } from '../../lib/session';
-import { db, q } from '../../lib/supabase';
-import { ORDER_STATUS, RETURN_REASON, RETURN_STATUS, type OrderItem, type OrderReturn, type OrderReturnItem } from '../../lib/types';
+import { ORDER_STATUS, RETURN_REASON, RETURN_STATUS, type OrderItem } from '../../lib/types';
 import { exportXlsx } from '../../lib/xlsx';
 import { Icon } from '../../ui/Icon';
 import { Confirm, Modal } from '../../ui/Modal';
 import { PhoneLink } from '../../ui/PhoneLink';
 import { toast } from '../../ui/toast';
 import { useAction } from '../../ui/useAction';
-import { getOrder, listBranchStock, listTrackedVariants, receiveOrder, setOrderBranch, setOrderStatus } from '../../api/market';
+import { getOrder, listBranchStock, listOrderReturns, listTrackedVariants, receiveOrder, setOrderBranch, setOrderStatus } from '../../api/market';
 import { ReturnModal } from './ReturnModal';
 
 const STEPS = ['new', 'confirmed', 'shipped', 'received'] as const;
@@ -31,8 +30,7 @@ export function OrderView() {
 
   // возвраты по заказу: видны обеим сторонам, по ним считается, сколько ещё можно вернуть
   const returns = useQuery(
-    () => q<(OrderReturn & { order_return_items: OrderReturnItem[] })[]>(
-      db.from('order_returns').select('*, order_return_items(*)').eq('order_id', id).order('created_at', { ascending: false }) as never),
+    () => listOrderReturns(id),
     [id],
   );
 

@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { money, parseNum, qty as fmtQty, round2 } from '../../lib/format';
-import { db, q } from '../../lib/supabase';
 import { RETURN_REASON, type Order, type OrderItem, type ReturnReason } from '../../lib/types';
 import { Modal } from '../../ui/Modal';
 import { toast } from '../../ui/toast';
+import { useAction } from '../../ui/useAction';
+import { createOrderReturn } from '../../api/market';
 
 interface Props {
   order: Order;
@@ -20,7 +21,7 @@ export function ReturnModal({ order, items, left, currency, onClose, onDone }: P
   const [qtys, setQtys] = useState<Record<string, string>>({});
   const [reason, setReason] = useState<ReturnReason | ''>('');
   const [comment, setComment] = useState('');
-  const [busy, setBusy] = useState(false);
+  const [busy, act] = useAction();
 
   const rows = items.filter((i) => left(i) > 0);
   const back = (i: OrderItem) => Math.max(parseNum(qtys[i.id] ?? ''), 0);
@@ -28,21 +29,12 @@ export function ReturnModal({ order, items, left, currency, onClose, onDone }: P
   const picked = rows.filter((i) => back(i) > 0);
   const total = round2(picked.reduce((s, i) => s + back(i) * Number(i.price), 0));
 
-  const save = async () => {
-    setBusy(true);
-    try {
-      const id = await q<string>(db.rpc('create_order_return', {
-        p_order: order.id, p_reason: reason, p_comment: comment.trim(),
-        p_items: picked.map((i) => ({ item_id: i.id, qty: back(i) })),
-      }));
+  const save = () =>
+    act(async () => {
+      const id = await createOrderReturn(order.id, reason, comment.trim(), picked.map((i) => ({ itemId: i.id, qty: back(i) })));
       toast.ok('Возврат отправлен компании: дождитесь ответа');
       onDone(id);
-    } catch (e) {
-      toast.error(e);
-    } finally {
-      setBusy(false);
-    }
-  };
+    }, { keepBusy: true });
 
   return (
     <Modal title={`Вернуть товар по заказу № ${order.number}`} onClose={onClose} width={720}

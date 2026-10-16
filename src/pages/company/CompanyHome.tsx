@@ -4,10 +4,9 @@ import { totals, useCompanyCatalog, variantState } from '../../lib/companyCatalo
 import { dateTime, money, moneyShort, qty as fmtQty } from '../../lib/format';
 import { useQuery } from '../../lib/hooks';
 import { useCompany } from '../../lib/session';
-import { db, q } from '../../lib/supabase';
 import { ORDER_STATUS } from '../../lib/types';
 import { CompanyAvatar } from '../../ui/CompanyAvatar';
-import { listCompanyOrders } from '../../api/market';
+import { listCompanyOrders, listPendingReturns } from '../../api/market';
 
 /** Главная компании: что требует действия прямо сейчас, что продаётся и что заканчивается. */
 export function CompanyHome() {
@@ -20,7 +19,7 @@ export function CompanyHome() {
   const catalog = useCompanyCatalog(org.id);
   // возвраты, по которым ход за компанией: ответить на новый или подтвердить получение товара
   const returns = useQuery(
-    () => q<{ id: string }[]>(db.from('order_returns').select('id').eq('supplier_org', org.id).in('status', ['new', 'sent'])),
+    () => listPendingReturns(org.id),
     [org.id],
   );
 

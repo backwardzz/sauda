@@ -3,12 +3,13 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { dateTime, money, qty as fmtQty } from '../../lib/format';
 import { useQuery } from '../../lib/hooks';
 import { useOrg } from '../../lib/session';
-import { db, q } from '../../lib/supabase';
-import { RETURN_REASON, RETURN_STATUS, type OrderReturn, type OrderReturnItem } from '../../lib/types';
+import { RETURN_REASON, RETURN_STATUS } from '../../lib/types';
 import { exportXlsx } from '../../lib/xlsx';
 import { Icon } from '../../ui/Icon';
 import { Confirm, Modal } from '../../ui/Modal';
 import { toast } from '../../ui/toast';
+import { useAction } from '../../ui/useAction';
+import { getReturn, setReturnStatus } from '../../api/market';
 
 const STEPS = ['new', 'accepted', 'sent', 'received'] as const;
 
@@ -18,14 +19,13 @@ export function ReturnView() {
   const { id = '' } = useParams();
   const navigate = useNavigate();
   const { org, canManage } = useOrg();
-  const [busy, setBusy] = useState(false);
+  const [busy, act] = useAction();
   const [ask, setAsk] = useState<Ask | null>(null);
   const [reply, setReply] = useState('');
   const [restock, setRestock] = useState(true);
 
   const data = useQuery(
-    () => q<(OrderReturn & { order_return_items: OrderReturnItem[] }) | null>(
-      db.from('order_returns').select('*, order_return_items(*)').eq('id', id).maybeSingle() as never),
+    () => getReturn(id),
     [id],
   );
   const r = data.data;
@@ -45,19 +45,13 @@ export function ReturnView() {
     setRestock(r.reason !== 'defect' && r.reason !== 'expired');
     setAsk(a);
   };
-  const run = async (status: string, ok: string, extra: Record<string, unknown> = {}) => {
-    setBusy(true);
-    try {
-      await q(db.rpc('set_return_status', { p_return: r.id, p_status: status, ...extra }));
+  const run = (status: string, ok: string, extra: Record<string, unknown> = {}) =>
+    act(async () => {
+      await setReturnStatus(r.id, status, extra);
       toast.ok(ok);
       setAsk(null);
       data.reload();
-    } catch (e) {
-      toast.error(e);
-    } finally {
-      setBusy(false);
-    }
-  };
+    });
 
   const download = () =>
     exportXlsx(`Возврат № ${r.number} ${isSupplier ? r.store_org_name : r.supplier_name}`, 'Возврат', items.map((i) => ({

@@ -3,12 +3,12 @@ import { useNavigate } from 'react-router-dom';
 import { dateTime, money } from '../../lib/format';
 import { useQuery } from '../../lib/hooks';
 import { useOrg } from '../../lib/session';
-import { db, q } from '../../lib/supabase';
 import { RETURN_REASON, RETURN_STATUS, type OrderReturn, type ReturnStatus } from '../../lib/types';
 import { exportXlsx } from '../../lib/xlsx';
 import { DataTable, type Column } from '../../ui/DataTable';
 import { Icon } from '../../ui/Icon';
 import { toast } from '../../ui/toast';
+import { listReturns } from '../../api/market';
 
 type Filter = 'active' | 'done' | 'closed' | 'all' | ReturnStatus;
 
@@ -23,11 +23,7 @@ export function Returns() {
   const [branch, setBranch] = useState('');
   const [search, setSearch] = useState('');
 
-  const returns = useQuery(() => {
-    let query = db.from('order_returns').select('*').eq(isCompany ? 'supplier_org' : 'store_org', org.id);
-    if (!isCompany && store) query = query.eq('store_id', store.id);
-    return q<OrderReturn[]>(query.order('created_at', { ascending: false }).limit(500));
-  }, [org.id, isCompany, store?.id]);
+  const returns = useQuery(() => listReturns(org.id, isCompany, store?.id), [org.id, isCompany, store?.id]);
 
   const term = search.trim().toLowerCase();
   const all = (returns.data ?? []).filter((r) =>
