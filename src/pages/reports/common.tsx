@@ -37,18 +37,4 @@ export function useReportScope(days = 30) {
   };
 }
 
-export interface SalesRow {
-  key: string;
-  label: string;
-  barcode: string;
-  unit: string;
-  qty_sold: number;
-  qty_returned: number;
-  sales_sum: number;
-  returns_sum: number;
-  discount: number;
-  revenue: number;
-  cost: number;
-  profit: number;
-  receipts: number;
-}
+export type { SalesRow } from '../../api/reports';

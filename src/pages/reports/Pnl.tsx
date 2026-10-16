@@ -1,28 +1,15 @@
 import { money } from '../../lib/format';
 import { useQuery } from '../../lib/hooks';
-import { db, q } from '../../lib/supabase';
 import { exportXlsx } from '../../lib/xlsx';
 import { Icon } from '../../ui/Icon';
 import { toast } from '../../ui/toast';
 import { useReportScope } from './common';
-
-interface Pnl {
-  sales_cash: number;
-  sales_card: number;
-  returns_sum: number;
-  discount: number;
-  cost_sold: number;
-  cost_returned: number;
-  writeoffs: number;
-  /** Излишки минус недостача по проведённым инвентаризациям. */
-  inventory: number;
-  receipts: number;
-}
+import { reportPnl } from '../../api/reports';
 
 export function PnlReport() {
   const scope = useReportScope();
   const data = useQuery(
-    async () => (await q<Pnl[]>(db.rpc('report_pnl', scope.args)))[0],
+    async () => (await reportPnl(scope.args))[0],
     [scope.args.p_org, scope.args.p_from, scope.args.p_to, scope.args.p_store],
   );
 

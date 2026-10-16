@@ -2,25 +2,22 @@ import { useState } from 'react';
 import { fiscalZReport } from '../lib/fiscal';
 import { money, parseNum } from '../lib/format';
 import { useQuery } from '../lib/hooks';
-import { db, q } from '../lib/supabase';
-import type { Register, Sale, Shift } from '../lib/types';
+import type { Register, Shift } from '../lib/types';
 import { Modal } from '../ui/Modal';
 import { toast } from '../ui/toast';
+import { useAction } from '../ui/useAction';
+import { cashOp, closeShift, listCashOps, listShiftTotals, openShift } from '../api/pos';
 
 /** Экран перед началом работы: на кассе нет открытой смены. */
 export function OpenShift({ register, currency, onOpened }: { register: Register; currency: string; onOpened: () => void }) {
   const [cash, setCash] = useState('');
-  const [busy, setBusy] = useState(false);
+  const [busy, run] = useAction();
 
   const open = async () => {
-    setBusy(true);
-    try {
-      await q(db.rpc('open_shift', { p_register: register.id, p_opening_cash: parseNum(cash) }));
+    await run(async () => {
+      await openShift(register.id, cash);
       onOpened();
-    } catch (e) {
-      toast.error(e);
-      setBusy(false);
-    }
+    }, { keepBusy: true });
   };
 
   return (
@@ -45,19 +42,15 @@ export function CashOpModal({ shift, currency, onClose }: { shift: Shift; curren
   const [kind, setKind] = useState<'in' | 'out'>('out');
   const [amount, setAmount] = useState('');
   const [comment, setComment] = useState('');
-  const [busy, setBusy] = useState(false);
+  const [busy, run] = useAction();
 
   const save = async () => {
     if (parseNum(amount) <= 0) return toast.error('Укажите сумму');
-    setBusy(true);
-    try {
-      await q(db.rpc('cash_op', { p_shift: shift.id, p_kind: kind, p_amount: parseNum(amount), p_comment: comment.trim() }));
+    await run(async () => {
+      await cashOp(shift.id, kind, amount, comment);
       toast.ok(kind === 'in' ? 'Внесение записано' : 'Изъятие записано');
       onClose();
-    } catch (e) {
-      toast.error(e);
-      setBusy(false);
-    }
+    }, { keepBusy: true });
   };
 
   return (
@@ -97,12 +90,12 @@ interface CloseProps {
 
 export function CloseShiftModal({ shift, currency, fiscal, onClose, onClosed }: CloseProps) {
   const [actual, setActual] = useState('');
-  const [busy, setBusy] = useState(false);
+  const [busy, run] = useAction();
 
   const data = useQuery(async () => {
     const [sales, ops] = await Promise.all([
-      q<Pick<Sale, 'kind' | 'total' | 'paid_cash' | 'paid_card'>[]>(db.from('sales').select('kind, total, paid_cash, paid_card').eq('shift_id', shift.id)),
-      q<{ kind: 'in' | 'out'; amount: number }[]>(db.from('cash_ops').select('kind, amount').eq('shift_id', shift.id)),
+      listShiftTotals(shift.id),
+      listCashOps(shift.id),
     ]);
     const sum = <T,>(list: T[], f: (x: T) => number) => list.reduce((s, x) => s + Number(f(x)), 0);
     const sold = sales.filter((s) => s.kind === 'sale');
@@ -124,17 +117,13 @@ export function CloseShiftModal({ shift, currency, fiscal, onClose, onClosed }: 
 
   const close = async () => {
     if (!d) return;
-    setBusy(true);
-    try {
+    await run(async () => {
       // Z-отчёт снимается до закрытия: если Webkassa недоступна, смена в Sauda остаётся открытой
       if (fiscal) await fiscalZReport(shift.id);
-      await q(db.rpc('close_shift', { p_shift: shift.id, p_closing_cash: actual.trim() === '' ? d.expected : parseNum(actual) }));
+      await closeShift(shift.id, actual, d.expected);
       toast.ok(`Смена № ${shift.number} закрыта`);
       onClosed();
-    } catch (e) {
-      toast.error(e);
-      setBusy(false);
-    }
+    }, { keepBusy: true });
   };
 
   return (

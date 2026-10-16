@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useSession } from '../lib/session';
-import { db, errorText } from '../lib/supabase';
+import { errorText } from '../lib/supabase';
 import { AUTH_MODE_KEY } from './Auth';
+import { startDemo } from '../api/org';
 
 /** Выйти из демо и открыть регистрацию. */
 async function toRegistration(signOut: () => Promise<void>) {
@@ -16,7 +17,7 @@ export function DemoStarter() {
 
   useEffect(() => {
     let alive = true;
-    db.rpc('start_demo').then(({ error }) => {
+    startDemo().then(({ error }) => {
       if (!alive) return;
       if (error) setError(errorText(error));
       else void reload();

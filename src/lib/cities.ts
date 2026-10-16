@@ -1,19 +1,12 @@
 import { useEffect, useState } from 'react';
-import { db, q } from './supabase';
 import type { City } from './types';
+import { listCities } from '../api/org';
 
 let cache: Promise<City[]> | null = null;
 
-interface Row {
-  id: number;
-  name: string;
-  region_id: number;
-  regions: { name: string; sort: number };
-}
-
 /** Справочник областей и городов меняется только миграциями: загружается один раз за сеанс. */
 export function loadCities(): Promise<City[]> {
-  cache ??= q<Row[]>(db.from('cities').select('id, name, region_id, regions(name, sort)') as never).then(
+  cache ??= listCities().then(
     // порядок областей задан в базе (regions.sort): города республиканского значения — первыми
     (list) =>
       list
