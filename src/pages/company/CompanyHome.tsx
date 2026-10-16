@@ -6,7 +6,7 @@ import { useQuery } from '../../lib/hooks';
 import { useCompany } from '../../lib/session';
 import { ORDER_STATUS } from '../../lib/types';
 import { CompanyAvatar } from '../../ui/CompanyAvatar';
-import { listCompanyOrders } from '../../api/market';
+import { listCompanyOrders, listPendingReturns } from '../../api/market';
 
 /** Главная компании: что требует действия прямо сейчас, что продаётся и что заканчивается. */
 export function CompanyHome() {
@@ -17,6 +17,11 @@ export function CompanyHome() {
     [org.id],
   );
   const catalog = useCompanyCatalog(org.id);
+  // возвраты, по которым ход за компанией: ответить на новый или подтвердить получение товара
+  const returns = useQuery(
+    () => listPendingReturns(org.id),
+    [org.id],
+  );
 
   const all = orders.data ?? [];
   const [monthAgo] = useState(() => Date.now() - 30 * 86400_000);
@@ -63,6 +68,7 @@ export function CompanyHome() {
       <div className="stat-grid">
         <Stat label="Новые заказы: подтвердите" value={String(all.filter((o) => o.status === 'new').length)} to="/orders" />
         <Stat label="Подтверждены: отгрузите" value={String(all.filter((o) => o.status === 'confirmed').length)} to="/orders" />
+        {!!returns.data?.length && <Stat label="Возвраты: ждут вашего ответа" value={String(returns.data.length)} to="/order-returns" />}
         <Stat label="Отгружено за 30 дней" value={moneyShort(revenue)} unit={org.currency} />
         <Stat label="Магазинов-клиентов" value={String(clients.size)} />
         <Stat label="Товаров в каталоге" value={catalog.data ? String(products) : '…'} to="/catalog" />

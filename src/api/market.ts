@@ -1,6 +1,6 @@
 // Закупки: витрина поставщиков, предложения, заказы.
 // Слой данных: только здесь названы таблицы, столбцы и функции базы. Страницы зовут эти функции.
-import type { CompanyCard, Offer, Order, OrderItem, PriceAccess } from '../lib/types';
+import type { CompanyCard, Offer, Order, OrderItem, OrderReturn, OrderReturnItem, PriceAccess } from '../lib/types';
 import { db, q } from '../lib/supabase';
 
 export const listOffersByCompany = (storeId: string, companyId: string | undefined) =>
@@ -51,3 +51,32 @@ export const placeOrder = (storeId: string, companyId: string, comment: string, 
     p_store: storeId, p_supplier: companyId, p_comment: comment,
     p_items: items.map((i) => ({ variant_id: i.variantId, qty: i.qty })),
   }));
+
+/** Возвраты: торговая точка видит свои возвраты компаниям, компания — возвраты от магазинов. */
+export const listReturns = (orgId: string, isCompany: boolean, storeId?: string) => {
+  let query = db.from('order_returns').select('*').eq(isCompany ? 'supplier_org' : 'store_org', orgId);
+  if (!isCompany && storeId) query = query.eq('store_id', storeId);
+  return q<OrderReturn[]>(query.order('created_at', { ascending: false }).limit(500));
+};
+
+export const getReturn = (id: string) =>
+  q<(OrderReturn & { order_return_items: OrderReturnItem[] }) | null>(
+    db.from('order_returns').select('*, order_return_items(*)').eq('id', id).maybeSingle() as never);
+
+/** Возвраты по заказу: видны обеим сторонам, по ним считается, сколько ещё можно вернуть. */
+export const listOrderReturns = (orderId: string) =>
+  q<(OrderReturn & { order_return_items: OrderReturnItem[] })[]>(
+    db.from('order_returns').select('*, order_return_items(*)').eq('order_id', orderId).order('created_at', { ascending: false }) as never);
+
+/** Возвраты, по которым ход за компанией: ответить на новый или подтвердить получение товара. */
+export const listPendingReturns = (supplierOrg: string) =>
+  q<{ id: string }[]>(db.from('order_returns').select('id').eq('supplier_org', supplierOrg).in('status', ['new', 'sent']));
+
+export const createOrderReturn = (orderId: string, reason: string, comment: string, items: { itemId: string; qty: number }[]) =>
+  q<string>(db.rpc('create_order_return', {
+    p_order: orderId, p_reason: reason, p_comment: comment,
+    p_items: items.map((i) => ({ item_id: i.itemId, qty: i.qty })),
+  }));
+
+export const setReturnStatus = (returnId: string, status: string, extra: Record<string, unknown>) =>
+  q(db.rpc('set_return_status', { p_return: returnId, p_status: status, ...extra }));

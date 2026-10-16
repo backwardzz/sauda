@@ -41,6 +41,7 @@ const MANAGER_NAV: Section[] = [
     items: [
       { label: 'Мои заказы', to: '/orders' },
       { label: 'Приёмка', to: '/docs/supply' },
+      { label: 'Возвраты компаниям', to: '/order-returns' },
     ],
   },
   {
@@ -76,6 +77,7 @@ const MANAGER_NAV: Section[] = [
 const COMPANY_NAV: Section[] = [
   { label: 'Главная', to: '/' },
   { label: 'Заказы', to: '/orders' },
+  { label: 'Возвраты', to: '/order-returns' },
   { label: 'Каталог', to: '/catalog' },
   { label: 'Склад', to: '/stock' },
   { label: 'Аналитика', to: '/analytics' },
