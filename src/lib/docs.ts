@@ -1,6 +1,6 @@
 import { round2 } from './format';
-import { db } from './supabase';
 import type { DocKind, DocLine } from './types';
+import { stockDocLines } from '../api/docs';
 
 interface KindMeta {
   title: string;
@@ -38,7 +38,7 @@ export const isDocKind = (k: string | undefined): k is DocKind => !!k && k in DO
 export async function loadDocLines(docId: string): Promise<DocLine[]> {
   const out: DocLine[] = [];
   for (let from = 0; ; from += 1000) {
-    const { data, error } = await db.rpc('stock_doc_lines', { p_doc: docId }).range(from, from + 999);
+    const { data, error } = await stockDocLines(docId, from);
     if (error) throw error;
     out.push(...((data ?? []) as DocLine[]));
     if (!data || data.length < 1000) return out;

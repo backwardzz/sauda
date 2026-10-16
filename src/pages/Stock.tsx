@@ -4,25 +4,19 @@ import { money, qty } from '../lib/format';
 import { useChanged, useDebounced, useQuery, useStored } from '../lib/hooks';
 import { categoryTree, useCategories } from '../lib/refs';
 import { useWorkspace } from '../lib/session';
-import { db, q, safeTerm } from '../lib/supabase';
+import { safeTerm } from '../lib/supabase';
 import type { StockRow } from '../lib/types';
 import { exportXlsx } from '../lib/xlsx';
 import { DataTable, Pager, type Column, type Sort } from '../ui/DataTable';
 import { Icon } from '../ui/Icon';
 import { toast } from '../ui/toast';
+import { stockPageQuery, stockPageTotals } from '../api/products';
 
 type Mode = 'in-stock' | 'all' | 'low' | 'negative';
 
 const SORT_COLUMN: Record<string, string> = {
   name: 'name', qty: 'qty', purchase: 'purchase_price', sale: 'sale_price', purchaseSum: 'purchase_sum', saleSum: 'sale_sum',
 };
-
-interface Totals {
-  positions: number;
-  qty: number;
-  purchase_sum: number;
-  sale_sum: number;
-}
 
 export function Stock() {
   const { org, store } = useWorkspace();
@@ -39,7 +33,7 @@ export function Stock() {
   const tree = useMemo(() => categoryTree(categories.data ?? []), [categories.data]);
 
   const scoped = () => {
-    let query = db.from('product_stock').select('*', { count: 'exact' }).eq('store_id', store.id).eq('archived', false);
+    let query = stockPageQuery(store.id);
     const s = safeTerm(term);
     if (s) query = query.or(`name.ilike.%${s}%,barcode.ilike.${s}%`);
     if (mode === 'in-stock') query = query.neq('qty', 0);
@@ -59,7 +53,7 @@ export function Stock() {
   }, [store.id, term, mode, category, sort, page, pageSize, categories.data]);
 
   const totals = useQuery(
-    async () => (await q<Totals[]>(db.rpc('stock_totals', { p_store: store.id })))[0],
+    async () => (await stockPageTotals(store.id))[0],
     [store.id],
   );
 

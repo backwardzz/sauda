@@ -5,7 +5,7 @@ import { useChanged, useDebounced, useQuery, useStored } from '../lib/hooks';
 import { packText, percentText, sizeText } from '../lib/productAttrs';
 import { categoryTree, useCategories, useContractors, useQuickGroups } from '../lib/refs';
 import { useWorkspace } from '../lib/session';
-import { db, q, safeTerm } from '../lib/supabase';
+import { safeTerm } from '../lib/supabase';
 import type { Category, Product } from '../lib/types';
 import { exportXlsx } from '../lib/xlsx';
 import { DataTable, Pager, type Column, type Sort } from '../ui/DataTable';
@@ -15,6 +15,7 @@ import { toast } from '../ui/toast';
 import { CategoryModal } from './CategoryModal';
 import { ImportModal } from './ImportModal';
 import { useAction } from '../ui/useAction';
+import { productsPageQuery, updateProducts } from '../api/products';
 
 interface Filters {
   supplier: string;
@@ -71,13 +72,16 @@ export function Products() {
 
   /** Фильтры списка: общие для страницы таблицы и для полной выгрузки. */
   const scoped = () => {
-    let query = db.from('products').select('*', { count: 'exact' }).eq('org_id', org.id).eq('archived', false);
+    let query = productsPageQuery(org.id);
     // в названиях дробь пишется с запятой: «0.5» в поиске находит «0,5 л»
-    const s = safeTerm(term).replace(/(d).(d)/g, '$1,$2');
+    const s = safeTerm(term);
     if (s) {
+      // запятая в or() разделяет условия, поэтому значение с ней берётся в кавычки (safeTerm кавычки убирает)
+      const comma = s.replace(/(\d)\.(\d)/g, '$1,$2');
+      const name = comma === s ? '' : `,name.ilike."%${comma}%"`;
       // доп. код ищется только целиком: пустой набор в cs.{} совпал бы со всеми товарами
       const code = /^[\w-]+$/.test(s) ? `,extra_barcodes.cs.{${s}}` : '';
-      query = query.or(`name.ilike.%${s}%,barcode.ilike.${s}%,sku.ilike.${s}%${code}`);
+      query = query.or(`name.ilike.%${s}%${name},barcode.ilike.${s}%,sku.ilike.${s}%${code}`);
     }
     if (category === 'none') query = query.is('category_id', null);
     else if (category !== 'all') {
@@ -169,7 +173,7 @@ export function Products() {
       : { quick_group_id: bulkValue || null };
     if (bulk === 'quick' && !bulkValue) return toast.error('Выберите группу быстрых товаров');
     await run(async () => {
-      await q(db.from('products').update(patch).in('id', ids).eq('org_id', org.id));
+      await updateProducts(patch, ids, org.id);
       toast.ok(bulk === 'delete' ? `Удалено товаров: ${ids.length}` : `Изменено товаров: ${ids.length}`);
       setSelected(new Set());
       setBulk(null);

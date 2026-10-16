@@ -3,12 +3,12 @@ import { useNavigate } from 'react-router-dom';
 import { dateTime, money } from '../../lib/format';
 import { useQuery } from '../../lib/hooks';
 import { useOrg } from '../../lib/session';
-import { db, q } from '../../lib/supabase';
 import { ORDER_STATUS, type Order, type OrderStatus } from '../../lib/types';
 import { exportXlsx } from '../../lib/xlsx';
 import { DataTable, type Column } from '../../ui/DataTable';
 import { Icon } from '../../ui/Icon';
 import { toast } from '../../ui/toast';
+import { listOrders } from '../../api/market';
 
 type Filter = 'active' | 'all' | OrderStatus;
 
@@ -22,9 +22,7 @@ export function Orders() {
   const [search, setSearch] = useState('');
 
   const orders = useQuery(() => {
-    let query = db.from('orders').select('*').eq(isCompany ? 'supplier_org' : 'store_org', org.id);
-    if (!isCompany && store) query = query.eq('store_id', store.id);
-    return q<Order[]>(query.order('created_at', { ascending: false }).limit(500));
+    return listOrders(org.id, isCompany, store?.id);
   }, [org.id, isCompany, store?.id]);
 
   const term = search.trim().toLowerCase();

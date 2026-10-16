@@ -3,22 +3,11 @@ import { Link } from 'react-router-dom';
 import { dateTime } from '../../lib/format';
 import { useQuery } from '../../lib/hooks';
 import { useCompany } from '../../lib/session';
-import { db, q } from '../../lib/supabase';
 import type { PriceAccessStatus } from '../../lib/types';
 import { DataTable, type Column } from '../../ui/DataTable';
 import { PhoneLink } from '../../ui/PhoneLink';
 import { toast } from '../../ui/toast';
-
-interface Row {
-  store_org: string;
-  store_name: string;
-  city: string;
-  phone: string;
-  status: PriceAccessStatus;
-  requested_at: string;
-  decided_at: string | null;
-  orders: number;
-}
+import { decidePriceAccess, priceAccessList, type PriceAccessRow as Row } from '../../api/company';
 
 const STATUS: Record<PriceAccessStatus, { label: string; badge: string }> = {
   pending: { label: 'Ждёт ответа', badge: 'warn' },
@@ -30,14 +19,14 @@ const STATUS: Record<PriceAccessStatus, { label: string; badge: string }> = {
 export function PriceAccess() {
   const { org, company, canManage, isHq } = useCompany();
   // запросы прайса разбирает головной офис: сотруднику филиала база их не отдаёт
-  const list = useQuery(async () => (isHq ? q<Row[]>(db.rpc('price_access_list', { p_company: org.id })) : []), [org.id, isHq]);
+  const list = useQuery(async () => (isHq ? priceAccessList(org.id) : []), [org.id, isHq]);
   const [busy, setBusy] = useState<string | null>(null);
   const closed = company.price_access === 'approved';
 
   const decide = async (r: Row, status: 'approved' | 'declined') => {
     setBusy(r.store_org);
     try {
-      await q(db.rpc('decide_price_access', { p_company: org.id, p_store_org: r.store_org, p_status: status }));
+      await decidePriceAccess(org.id, r.store_org, status);
       toast.ok(status === 'approved' ? `${r.store_name}: цены открыты` : `${r.store_name}: доступ закрыт`);
       list.reload();
     } catch (e) {

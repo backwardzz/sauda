@@ -4,13 +4,13 @@ import { bestOffer, clampQty, loadOffers, readCart, writeCart } from '../../lib/
 import { money, parseNum, plural, qty as fmtQty, round2 } from '../../lib/format';
 import { useQuery, useStored } from '../../lib/hooks';
 import { useWorkspace } from '../../lib/session';
-import { db, q } from '../../lib/supabase';
 import { STARTER_PACKS, type StarterItem } from '../../lib/starter';
 import type { Offer } from '../../lib/types';
 import { Icon } from '../../ui/Icon';
 import { toast } from '../../ui/toast';
 import { PharmacyStub } from './Catalog';
 import { useAction } from '../../ui/useAction';
+import { addCatalogProducts, starterProducts } from '../../api/products';
 
 /** «У меня новый магазин»: пакеты ходовых товаров с ценами компаний — добавить в свой список и сразу заказать. */
 export function NewStore() {
@@ -35,7 +35,7 @@ function StarterPacks() {
   const [chosen, setChosen] = useState<Record<string, string>>({});
   const [busy, run] = useAction();
 
-  const items = useQuery(() => q<StarterItem[]>(db.rpc('starter_products', { p_org: org.id })), [org.id]);
+  const items = useQuery(() => starterProducts(org.id), [org.id]);
   const offers = useQuery(
     async () => (items.data ? loadOffers(store.id, { barcodes: items.data.map((i) => i.barcode) }) : []),
     [store.id, items.data],
@@ -100,15 +100,11 @@ function StarterPacks() {
     await run(async () => {
       const all = items.data ?? [];
       const fresh = all.filter((i) => !i.mine && chosenSet.has(i.id));
-      const res = fresh.length
-        ? await q<{ created: number; skipped: number }>(db.rpc('add_catalog_products', {
-            p_org: org.id, p_ids: fresh.map((i) => i.id),
-            p_prices: fresh.flatMap((i) => {
-              const o = offerOf(i);
-              return o ? [{ id: i.id, purchase_price: Number(o.price), sale_price: Math.max(parseNum(saleOf(i, o)), 0) }] : [];
-            }),
-          }))
-        : { created: 0, skipped: 0 };
+      const prices = fresh.flatMap((i) => {
+        const o = offerOf(i);
+        return o ? [{ id: i.id, purchase_price: Number(o.price), sale_price: Math.max(parseNum(saleOf(i, o)), 0) }] : [];
+      });
+      const res = fresh.length ? await addCatalogProducts(org.id, fresh.map((i) => i.id), prices) : { created: 0, skipped: 0 };
 
       if (toCart) {
         const carts = new Map<string, Record<string, number>>();

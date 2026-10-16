@@ -1,13 +1,13 @@
 import { useState } from 'react';
 import { useContractors } from '../../lib/refs';
 import { useWorkspace } from '../../lib/session';
-import { db, q } from '../../lib/supabase';
 import type { Contractor } from '../../lib/types';
 import { DataTable, type Column } from '../../ui/DataTable';
 import { Icon } from '../../ui/Icon';
 import { Modal } from '../../ui/Modal';
 import { toast } from '../../ui/toast';
 import { useAction } from '../../ui/useAction';
+import { addContractor, deleteContractor, updateContractor } from '../../api/org';
 
 const META = {
   customer: { title: 'Покупатели', one: 'Покупатель', empty: 'Покупателей пока нет. Добавьте постоянных клиентов, чтобы видеть их покупки в отчётах.' },
@@ -32,8 +32,8 @@ export function Contractors({ kind }: { kind: Contractor['kind'] }) {
     if (!form.name.trim()) return toast.error('Укажите название');
     await run(async () => {
       const row = { org_id: org.id, kind, name: form.name.trim(), phone: form.phone.trim(), comment: form.comment.trim() };
-      if (edit === 'new') await q(db.from('contractors').insert(row));
-      else if (edit) await q(db.from('contractors').update(row).eq('id', edit.id));
+      if (edit === 'new') await addContractor(row);
+      else if (edit) await updateContractor(row, edit.id);
       setEdit(null);
       list.reload();
     });
@@ -42,7 +42,7 @@ export function Contractors({ kind }: { kind: Contractor['kind'] }) {
   const remove = async () => {
     if (!edit || edit === 'new') return;
     await run(async () => {
-      await q(db.from('contractors').delete().eq('id', edit.id));
+      await deleteContractor(edit.id);
       setEdit(null);
       list.reload();
     });

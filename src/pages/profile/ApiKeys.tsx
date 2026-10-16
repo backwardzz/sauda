@@ -2,20 +2,12 @@ import { Fragment, useState } from 'react';
 import { dateOnly, dateTime } from '../../lib/format';
 import { useQuery } from '../../lib/hooks';
 import { useOrg } from '../../lib/session';
-import { API_URL, db, PUBLIC_KEY, q } from '../../lib/supabase';
+import { API_URL, PUBLIC_KEY } from '../../lib/supabase';
 import { Icon } from '../../ui/Icon';
 import { Modal } from '../../ui/Modal';
 import { toast } from '../../ui/toast';
 import { useAction } from '../../ui/useAction';
-
-interface ApiKey {
-  id: string;
-  name: string;
-  prefix: string;
-  created_at: string;
-  last_used_at: string | null;
-  revoked_at: string | null;
-}
+import { type ApiKey, createApiKey, listApiKeys, revokeApiKey } from '../../api/company';
 
 const copy = async (text: string, ok: string) => {
   try {
@@ -36,14 +28,13 @@ export function ApiKeys() {
   const [busy, run] = useAction();
 
   const keys = useQuery(
-    () => q<ApiKey[]>(db.from('company_api_keys').select('id, name, prefix, created_at, last_used_at, revoked_at')
-      .eq('org_id', org.id).is('revoked_at', null).order('created_at')),
+    () => listApiKeys(org.id),
     [org.id],
   );
 
   const create = async () => {
     await run(async () => {
-      setIssued(await q<string>(db.rpc('create_api_key', { p_org: org.id, p_name: name })));
+      setIssued(await createApiKey(org.id, name));
       keys.reload();
     });
   };
@@ -51,7 +42,7 @@ export function ApiKeys() {
   const revoke = async (k: ApiKey) => {
     if (!window.confirm(`Отозвать ключ «${k.name}»? Обмен, который им пользуется, перестанет работать.`)) return;
     try {
-      await q(db.rpc('revoke_api_key', { p_key: k.id }));
+      await revokeApiKey(k.id);
       toast.ok('Ключ отозван');
       keys.reload();
     } catch (e) {

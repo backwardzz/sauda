@@ -1,8 +1,9 @@
 import { useState, type FormEvent } from 'react';
 import { useSession } from '../lib/session';
-import { db, errorText } from '../lib/supabase';
+import { errorText } from '../lib/supabase';
 import { passwordError, PasswordHint, PasswordRepeat } from './Auth';
 import { useAction } from '../ui/useAction';
+import { auth } from '../api/auth';
 
 /** Вход по коду или ссылке восстановления: сначала новый пароль, потом кабинет. */
 export function NewPassword() {
@@ -18,7 +19,7 @@ export function NewPassword() {
     const bad = passwordError(password, password2);
     if (bad) return setError(bad);
     await run(async () => {
-      const { error } = await db.auth.updateUser({ password });
+      const { error } = await auth.updateUser({ password });
       if (error) throw error;
       setRecovering(false);
     }, { onError: (e) => setError(errorText(e)) });

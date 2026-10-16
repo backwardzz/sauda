@@ -1,11 +1,10 @@
 import { useEffect, useState } from 'react';
 import { dateTime, money, parseNum, qty as fmtQty, round2, round3 } from '../lib/format';
-import { db, q } from '../lib/supabase';
 import type { Shift } from '../lib/types';
 import { Modal } from '../ui/Modal';
 import { toast } from '../ui/toast';
-import { SALE_SELECT, type SaleFull } from './SaleModal';
 import { useAction } from '../ui/useAction';
+import { createReturn, findSaleForReturn, listReturnedItems, type SaleFull } from '../api/pos';
 
 interface Props {
   orgId: string;
@@ -28,13 +27,9 @@ export function PosReturn({ orgId, shift, currency, saleId, onClose, onDone }: P
 
   const load = (by: { id: string } | { number: number }) =>
     run(async () => {
-      let query = db.from('sales').select(SALE_SELECT).eq('org_id', orgId).eq('kind', 'sale');
-      query = 'id' in by ? query.eq('id', by.id) : query.eq('number', by.number);
-      const found = await q<SaleFull | null>(query.maybeSingle() as never);
+      const found = await findSaleForReturn(orgId, by);
       if (!found) return toast.error('Чек с таким номером не найден');
-      const prior = await q<{ parent_item_id: string; qty: number }[]>(
-        db.from('sale_items').select('parent_item_id, qty').in('parent_item_id', found.sale_items.map((i) => i.id)),
-      );
+      const prior = await listReturnedItems(found.sale_items);
       const map: Record<string, number> = {};
       for (const r of prior) map[r.parent_item_id] = (map[r.parent_item_id] ?? 0) + Number(r.qty);
       setReturned(map);
@@ -62,9 +57,7 @@ export function PosReturn({ orgId, shift, currency, saleId, onClose, onDone }: P
     const items = lines.filter((l) => l.take > 0).map((l) => ({ item_id: l.item.id, qty: l.take }));
     if (!items.length) return toast.error('Укажите количество к возврату');
     await run(async () => {
-      const res = await q<{ id: string; number: number; total: number }>(
-        db.rpc('create_return', { p_shift: shift.id, p_sale: sale.id, p_items: items, p_refund_card: toCard ? total : 0 }),
-      );
+      const res = await createReturn(shift.id, sale.id, items, toCard, total);
       toast.ok(`Возврат № ${res.number} на ${money(res.total)} ${currency}`);
       onDone(res.id);
     }, { keepBusy: true });

@@ -4,13 +4,13 @@ import { clampQty, loadOffers, useCarts } from '../../lib/cart';
 import { money, parseNum, plural, qty as fmtQty, round2 } from '../../lib/format';
 import { useQuery } from '../../lib/hooks';
 import { useWorkspace } from '../../lib/session';
-import { db, q } from '../../lib/supabase';
 import type { Offer } from '../../lib/types';
 import { fullName } from '../../lib/variants';
 import { Icon } from '../../ui/Icon';
 import { ProductImage } from '../../ui/ProductImage';
 import { toast } from '../../ui/toast';
 import { useAction } from '../../ui/useAction';
+import { placeOrder } from '../../api/market';
 
 /** Корзина магазина: товары из каталога, со страниц компаний и из пакетов — по одному заказу на компанию. */
 export function CartPage() {
@@ -38,10 +38,8 @@ export function CartPage() {
   const grand = round2(groups.reduce((s, g) => s + g.total, 0));
 
   const order = async (g: (typeof groups)[number]) => {
-    const id = await q<string>(db.rpc('place_order', {
-      p_store: store.id, p_supplier: g.companyId, p_comment: (comments[g.companyId] ?? '').trim(),
-      p_items: g.live.map((l) => ({ variant_id: l.variantId, qty: clampQty(l.n, l.offer) })),
-    }));
+    const id = await placeOrder(store.id, g.companyId, (comments[g.companyId] ?? '').trim(),
+      g.live.map((l) => ({ variantId: l.variantId, qty: clampQty(l.n, l.offer) })));
     clear(g.companyId);
     return id;
   };

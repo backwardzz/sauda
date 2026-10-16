@@ -2,8 +2,11 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import type { User } from '@supabase/supabase-js';
 import { useChanged } from './hooks';
 import { queryClient } from './queryClient';
-import { db, q } from './supabase';
 import type { Branch, Company, Org, Register, Role, Store } from './types';
+import { acceptInvites, listMemberships, listStores } from '../api/org';
+import { listRegisters } from '../api/pos';
+import { getCompany, listBranches } from '../api/company';
+import { auth } from '../api/auth';
 
 interface Membership {
   role: Role;
@@ -78,19 +81,19 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    db.auth.getSession().then(async ({ data }) => {
+    auth.getSession().then(async ({ data }) => {
       if (data.session) {
         // сохранённая сессия может принадлежать удалённому пользователю: сервер ответит 4xx — выходим.
         // При обрыве сети статуса нет, и сессия остаётся.
-        const { error } = await db.auth.getUser();
+        const { error } = await auth.getUser();
         if (error && typeof error.status === 'number' && error.status >= 400 && error.status < 500) {
-          await db.auth.signOut({ scope: 'local' });
+          await auth.signOut({ scope: 'local' });
           return setUser(null);
         }
       }
       setUser(data.session?.user ?? null);
     });
-    const { data } = db.auth.onAuthStateChange((event, session) => {
+    const { data } = auth.onAuthStateChange((event, session) => {
       // переход по ссылке «восстановить пароль» из письма
       if (event === 'PASSWORD_RECOVERY') setRecovering(true);
       setUser((prev) => (prev?.id === session?.user?.id ? prev : (session?.user ?? null)));
@@ -108,20 +111,18 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const reload = useCallback(async () => {
     // без входа списки очищаются при отрисовке, ниже
     if (!userId) return;
-    await db.rpc('accept_invites');
-    const rows = await q<{ role: Role; branch_id: string | null; orgs: Org }[]>(
-      db.from('org_members').select('role, branch_id, orgs(*)').eq('user_id', userId).order('created_at') as never,
-    );
+    await acceptInvites();
+    const rows = await listMemberships(userId);
     const list = rows.filter((r) => r.orgs).map((r) => ({ role: r.role, org: r.orgs, branchId: r.branch_id }));
     const current = list.find((m) => m.org.id === orgId) ?? list[0];
     const isCompany = current?.org.kind === 'company';
     const [s, r, c, b] = current
       ? await Promise.all([
-          q<Store[]>(db.from('stores').select('*').eq('org_id', current.org.id).order('created_at')),
-          q<Register[]>(db.from('registers').select('*').eq('org_id', current.org.id).order('created_at')),
-          isCompany ? q<Company | null>(db.from('companies').select('*').eq('org_id', current.org.id).maybeSingle()) : null,
+          listStores(current.org.id),
+          listRegisters(current.org.id),
+          isCompany ? getCompany(current.org.id) : null,
           isCompany
-            ? q<Branch[]>(db.from('company_branches').select('*').eq('org_id', current.org.id).order('is_main', { ascending: false }).order('created_at'))
+            ? listBranches(current.org.id)
             : [],
         ])
       : [[], [], null, []];
@@ -183,7 +184,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       reload,
       signOut: async () => {
         setRecovering(false);
-        await db.auth.signOut();
+        await auth.signOut();
       },
       recovering,
       setRecovering,

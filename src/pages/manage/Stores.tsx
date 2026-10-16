@@ -3,7 +3,6 @@ import { Link } from 'react-router-dom';
 import { cityLabel, cityName, useCities } from '../../lib/cities';
 import { formatPhone } from '../../lib/format';
 import { useWorkspace } from '../../lib/session';
-import { db, q } from '../../lib/supabase';
 import type { Store } from '../../lib/types';
 import { CitySelect } from '../../ui/CitySelect';
 import { PhoneInput } from '../../ui/PhoneInput';
@@ -12,6 +11,8 @@ import { Icon } from '../../ui/Icon';
 import { Modal } from '../../ui/Modal';
 import { toast } from '../../ui/toast';
 import { useAction } from '../../ui/useAction';
+import { addStore, deleteStore, updateStore } from '../../api/org';
+import { addFirstRegister } from '../../api/pos';
 
 const EMPTY = { name: '', city: null as number | null, address: '', phone: '' };
 
@@ -43,10 +44,10 @@ export function Stores() {
     const row = { org_id: org.id, name: form.name.trim(), city_id: form.city, address: form.address.trim(), phone: formatPhone(form.phone) };
     void run(async () => {
       if (edit === 'new') {
-        const created = await q<Store>(db.from('stores').insert(row).select().single());
-        await q(db.from('registers').insert({ org_id: org.id, store_id: created.id, name: 'Касса 1' }));
+        const created = await addStore(row);
+        await addFirstRegister(org.id, created.id);
       } else if (edit) {
-        await q(db.from('stores').update(row).eq('id', edit.id));
+        await updateStore(row, edit.id);
       }
     }, edit === 'new' ? 'Торговая точка создана, к ней добавлена «Касса 1»' : 'Сохранено');
   };
@@ -80,7 +81,7 @@ export function Stores() {
             <>
               {edit !== 'new' && stores.length > 1 && (
                 <button className="btn danger" disabled={busy}
-                  onClick={() => run(() => q(db.from('stores').delete().eq('id', (edit as Store).id)), 'Торговая точка удалена')}>
+                  onClick={() => run(() => deleteStore((edit as Store).id), 'Торговая точка удалена')}>
                   Удалить
                 </button>
               )}

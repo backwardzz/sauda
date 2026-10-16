@@ -2,13 +2,14 @@ import { useState } from 'react';
 import { dateTime, parseNum } from '../../lib/format';
 import { useQuery } from '../../lib/hooks';
 import { useWorkspace } from '../../lib/session';
-import { db, q } from '../../lib/supabase';
-import type { Register, RegisterFiscal, Shift } from '../../lib/types';
+import type { Register } from '../../lib/types';
 import { DataTable, type Column } from '../../ui/DataTable';
 import { Icon } from '../../ui/Icon';
 import { Modal } from '../../ui/Modal';
 import { toast } from '../../ui/toast';
 import { useAction } from '../../ui/useAction';
+import { addRegister, deleteRegister, deleteRegisterFiscal, listOpenShiftsOfOrg, listRegisterFiscal, setRegisterFiscal, updateRegister } from '../../api/pos';
+import { setVatRate } from '../../api/org';
 
 const EMPTY = { name: '', store_id: '', active: true, receipt_header: '', receipt_footer: 'Спасибо за покупку!' };
 const NO_FISCAL = { enabled: true, cashbox: '', login: '', password: '' };
@@ -22,13 +23,11 @@ export function Registers() {
   const [busy, act] = useAction();
 
   const openShifts = useQuery(
-    () => q<Pick<Shift, 'register_id' | 'opened_at' | 'number'>[]>(
-      db.from('shifts').select('register_id, opened_at, number').eq('org_id', org.id).is('closed_at', null),
-    ),
+    () => listOpenShiftsOfOrg(org.id),
     [org.id],
   );
   const fiscalRows = useQuery(
-    () => q<RegisterFiscal[]>(db.from('register_fiscal').select('register_id, enabled, cashbox, login').eq('org_id', org.id)),
+    () => listRegisterFiscal(org.id),
     [org.id],
   );
   const fiscalOf = (id: string) => (fiscalRows.data ?? []).find((f) => f.register_id === id);
@@ -61,14 +60,12 @@ export function Registers() {
     const vatRate = vat.trim() === '' ? null : parseNum(vat);
     if (vatRate != null && (vatRate <= 0 || vatRate > 100)) return toast.error('Ставка НДС — от 0 до 100 %');
     void run(async () => {
-      if (edit === 'new') return q(db.from('registers').insert(row));
-      await q(db.from('registers').update(row).eq('id', edit!.id));
+      if (edit === 'new') return addRegister(row);
+      await updateRegister(row, edit!.id);
       if (useFiscal) {
-        await q(db.rpc('set_register_fiscal', {
-          p_register: edit!.id, p_cashbox: fiscal.cashbox, p_login: fiscal.login, p_password: fiscal.password, p_enabled: fiscal.enabled,
-        }));
+        await setRegisterFiscal(edit!.id, fiscal.cashbox, fiscal.login, fiscal.password, fiscal.enabled);
       }
-      if (role === 'owner' && vatRate !== org.vat_rate) await q(db.from('orgs').update({ vat_rate: vatRate }).eq('id', org.id));
+      if (role === 'owner' && vatRate !== org.vat_rate) await setVatRate(vatRate, org.id);
     }, edit === 'new' ? 'Касса успешно создана' : 'Касса сохранена');
   };
 
@@ -113,7 +110,7 @@ export function Registers() {
             <>
               {edit !== 'new' && (
                 <button className="btn danger" disabled={busy}
-                  onClick={() => run(() => q(db.from('registers').delete().eq('id', (edit as Register).id)), 'Касса удалена')}>
+                  onClick={() => run(() => deleteRegister((edit as Register).id), 'Касса удалена')}>
                   Удалить
                 </button>
               )}
@@ -184,7 +181,7 @@ export function Registers() {
               </label>
               {current && (
                 <button type="button" className="btn wide" disabled={busy}
-                  onClick={() => run(() => q(db.rpc('delete_register_fiscal', { p_register: (edit as Register).id })), 'Webkassa отключена')}>
+                  onClick={() => run(() => deleteRegisterFiscal((edit as Register).id), 'Webkassa отключена')}>
                   Отключить Webkassa и удалить пароль
                 </button>
               )}

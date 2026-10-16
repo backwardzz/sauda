@@ -5,7 +5,6 @@ import { money, moneyShort, plural, qty as fmtQty } from '../../lib/format';
 import { useQuery, useStored } from '../../lib/hooks';
 import { parseImport } from '../../lib/importParse';
 import { useCompany } from '../../lib/session';
-import { db, q } from '../../lib/supabase';
 import type { Variant } from '../../lib/types';
 import { fullName, priceRange, splitName } from '../../lib/variants';
 import { exportXlsx, readXlsx } from '../../lib/xlsx';
@@ -14,6 +13,8 @@ import { ProductImage } from '../../ui/ProductImage';
 import { toast } from '../../ui/toast';
 import { ProductEditor } from './ProductEditor';
 import { useAction } from '../../ui/useAction';
+import { catalogCategoryNames } from '../../api/products';
+import { importCompanyProducts } from '../../api/company';
 
 type Filter = 'all' | 'active' | 'low' | 'out' | 'hidden';
 
@@ -37,7 +38,7 @@ export function CompanyCatalog() {
   const data = useCompanyCatalog(org.id);
   // категории общего каталога площадки: подсказки, чтобы у компаний они назывались одинаково
   const shared = useQuery(
-    () => q<{ category: string; subcategory: string }[]>(db.rpc('catalog_categories', { p_org: org.id })).catch(() => []),
+    () => catalogCategoryNames(org.id).catch(() => []),
     [org.id],
   );
 
@@ -80,9 +81,8 @@ export function CompanyCatalog() {
       const { items } = parseImport(await readXlsx(f));
       const total = { created: 0, updated: 0, products: 0 };
       for (let i = 0; i < items.length; i += 500) {
-        const res = await q<typeof total>(db.rpc('import_company_products', {
-          p_org: org.id, p_branch: stockBranch || null,
-          p_rows: items.slice(i, i + 500).map((r) => {
+        const res = await importCompanyProducts(org.id, stockBranch || null,
+          items.slice(i, i + 500).map((r) => {
             // «Товар» и «Вид» из нашей же выгрузки берутся как есть; обычный прайс раскладывается по размеру в названии
             const parts = r.product ? { product: r.product, label: r.label ?? '' } : splitName(r.name);
             return {
@@ -91,7 +91,7 @@ export function CompanyCatalog() {
               price: r.sale_price ?? r.price ?? r.purchase_price, pack_qty: r.pack_qty, stock: r.qty,
             };
           }),
-        }));
+        );
         total.created += res.created;
         total.updated += res.updated;
         total.products += res.products;

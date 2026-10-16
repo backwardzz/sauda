@@ -3,7 +3,6 @@ import { Link } from 'react-router-dom';
 import { cityName, useCities } from '../../lib/cities';
 import { dateOnly, formatPhone, money, parseNum } from '../../lib/format';
 import { useOrg } from '../../lib/session';
-import { db, q } from '../../lib/supabase';
 import { COMPANY_TYPE, type CompanyType, type PriceAccessMode } from '../../lib/types';
 import { VerifiedBadge } from '../../ui/CompanyAvatar';
 import { Icon } from '../../ui/Icon';
@@ -15,6 +14,8 @@ import { toast } from '../../ui/toast';
 import { ApiKeys } from './ApiKeys';
 import { Branches } from './Branches';
 import { useAction } from '../../ui/useAction';
+import { setLogo, updateOrgProfile } from '../../api/org';
+import { updateCompanyProfile } from '../../api/company';
 
 /** Профиль магазина или компании: сначала просмотр, правка — по кнопке. */
 export function Profile() {
@@ -37,7 +38,7 @@ export function Profile() {
   ].filter(Boolean) as string[];
 
   const saveLogo = async (logo: string) => {
-    await q(db.from('orgs').update({ logo_url: logo }).eq('id', org.id));
+    await setLogo(logo, org.id);
     toast.ok(logo ? 'Логотип обновлён' : 'Логотип убран');
     await reload();
   };
@@ -144,15 +145,13 @@ function ProfileEditor({ onClose }: { onClose: () => void }) {
     if (!form.name.trim()) return toast.error('Укажите название');
     if (bin && !/^\d{12}$/.test(bin)) return toast.error('БИН или ИИН — это 12 цифр');
     await run(async () => {
-      await q(db.from('orgs').update({
-        name: form.name.trim(), phone: formatPhone(form.phone), email: form.email.trim(), contact_name: form.contact.trim(), bin,
-      }).eq('id', org.id));
+      await updateOrgProfile(org.id, { name: form.name.trim(), phone: formatPhone(form.phone), email: form.email.trim(), contactName: form.contact.trim(), bin });
       if (isCompany) {
-        await q(db.from('companies').update({
-          company_type: form.type, description: form.description.trim(), website,
-          min_order: Math.max(parseNum(form.min), 0), delivery_note: form.delivery.trim(), payment_terms: form.payment.trim(),
-          price_access: form.prices,
-        }).eq('org_id', org.id));
+        await updateCompanyProfile(org.id, {
+          type: form.type, description: form.description.trim(), website,
+          minOrder: Math.max(parseNum(form.min), 0), deliveryNote: form.delivery.trim(), paymentTerms: form.payment.trim(),
+          priceAccess: form.prices,
+        });
       }
       toast.ok('Профиль сохранён');
       await reload();

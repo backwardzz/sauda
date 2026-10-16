@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { dateTime, money } from '../../lib/format';
 import { useQuery } from '../../lib/hooks';
-import { db, q } from '../../lib/supabase';
 import type { Sale } from '../../lib/types';
 import { exportXlsx } from '../../lib/xlsx';
 import { DataTable, type Column } from '../../ui/DataTable';
@@ -10,27 +9,8 @@ import { Modal } from '../../ui/Modal';
 import { toast } from '../../ui/toast';
 import { SaleModal } from '../SaleModal';
 import { useReportScope } from './common';
-
-export interface ShiftRow {
-  id: string;
-  number: number;
-  register_name: string;
-  cashier_name: string;
-  opened_at: string;
-  closed_at: string | null;
-  opening_cash: number;
-  sales_cash: number;
-  sales_card: number;
-  returns_cash: number;
-  returns_card: number;
-  cash_in: number;
-  cash_out: number;
-  expected_cash: number;
-  closing_cash: number | null;
-  cost: number;
-  profit: number;
-  receipts: number;
-}
+import { reportShifts, type ShiftRow } from '../../api/reports';
+import { listShiftSales } from '../../api/pos';
 
 const income = (s: ShiftRow) => Number(s.sales_cash) + Number(s.cash_in);
 const outgo = (s: ShiftRow) => Number(s.returns_cash) + Number(s.cash_out);
@@ -42,11 +22,11 @@ export function ShiftsReport() {
   const [sale, setSale] = useState<string | null>(null);
 
   const shifts = useQuery(
-    () => q<ShiftRow[]>(db.rpc('report_shifts', scope.args)),
+    () => reportShifts(scope.args),
     [scope.args.p_org, scope.args.p_from, scope.args.p_to, scope.args.p_store],
   );
   const sales = useQuery(
-    async () => (open ? q<Sale[]>(db.from('sales').select('*').eq('shift_id', open.id).order('created_at')) : []),
+    async () => (open ? listShiftSales(open.id) : []),
     [open?.id],
   );
 

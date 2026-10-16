@@ -4,14 +4,14 @@ import { readCart, writeCart } from '../../lib/cart';
 import { dateTime, money, parseNum, qty as fmtQty, round2 } from '../../lib/format';
 import { useChanged, useQuery } from '../../lib/hooks';
 import { useOrg } from '../../lib/session';
-import { db, q } from '../../lib/supabase';
-import { ORDER_STATUS, type Order, type OrderItem } from '../../lib/types';
+import { ORDER_STATUS, type OrderItem } from '../../lib/types';
 import { exportXlsx } from '../../lib/xlsx';
 import { Icon } from '../../ui/Icon';
 import { Confirm, Modal } from '../../ui/Modal';
 import { PhoneLink } from '../../ui/PhoneLink';
 import { toast } from '../../ui/toast';
 import { useAction } from '../../ui/useAction';
+import { getOrder, listBranchStock, listTrackedVariants, receiveOrder, setOrderBranch, setOrderStatus } from '../../api/market';
 
 const STEPS = ['new', 'confirmed', 'shipped', 'received'] as const;
 
@@ -27,7 +27,7 @@ export function OrderView() {
   const [reply, setReply] = useState('');
 
   const data = useQuery(
-    () => q<(Order & { order_items: OrderItem[] }) | null>(db.from('orders').select('*, order_items(*)').eq('id', id).maybeSingle() as never),
+    () => getOrder(id),
     [id],
   );
   const o = data.data;
@@ -41,8 +41,8 @@ export function OrderView() {
     const ids = (o?.order_items ?? []).map((i) => i.variant_id).filter((v): v is string => !!v);
     if (!isSupplier || !open || !o?.branch_id || !ids.length) return null;
     const [tracked, rows] = await Promise.all([
-      q<{ id: string }[]>(db.from('company_variants').select('id').in('id', ids).eq('track_stock', true)),
-      q<{ variant_id: string; qty: number }[]>(db.from('company_stock').select('variant_id, qty').eq('branch_id', o.branch_id).in('variant_id', ids)),
+      listTrackedVariants(ids),
+      listBranchStock(o.branch_id, ids),
     ]);
     return new Map(tracked.map((t) => [t.id, Number(rows.find((r) => r.variant_id === t.id)?.qty ?? 0)]));
   }, [o?.id, o?.branch_id, o?.status, isSupplier]);
@@ -69,7 +69,7 @@ export function OrderView() {
       else data.reload();
     });
   };
-  const status = (s: string, extra: Record<string, unknown> = {}) => q(db.rpc('set_order_status', { p_order: o.id, p_status: s, ...extra }));
+  const status = (s: string, extra: Record<string, unknown> = {}) => setOrderStatus(o.id, s, extra);
 
   const confirm = () =>
     run(() => status('confirmed', {
@@ -77,7 +77,7 @@ export function OrderView() {
       p_comment: reply.trim(),
     }), 'Заказ подтверждён');
   const receive = () =>
-    run(() => q<string>(db.rpc('receive_order', { p_order: o.id })), 'Создан черновик приёмки: проверьте и проведите', (doc) => navigate(`/docs/supply/${doc as string}`));
+    run(() => receiveOrder(o.id), 'Создан черновик приёмки: проверьте и проведите', (doc) => navigate(`/docs/supply/${doc as string}`));
   // «на складе не хватает» → одним нажатием оставить к отгрузке столько, сколько есть
   const fitStock = () => setEdits({ ...edits, ...Object.fromEntries(short.map((i) => [i.id, String(have(i))])) });
 
@@ -161,7 +161,7 @@ export function OrderView() {
               <span>Отгружает филиал</span>
               {open && branches.length > 1 ? (
                 <select value={o.branch_id ?? ''} disabled={busy}
-                  onChange={(e) => run(() => q(db.rpc('set_order_branch', { p_order: o.id, p_branch: e.target.value })), 'Заказ передан другому филиалу')}>
+                  onChange={(e) => run(() => setOrderBranch(o.id, e.target.value), 'Заказ передан другому филиалу')}>
                   {!o.branch_id && <option value="">Не выбран</option>}
                   {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
                 </select>
