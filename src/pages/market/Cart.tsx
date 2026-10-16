@@ -4,12 +4,13 @@ import { clampQty, loadOffers, useCarts } from '../../lib/cart';
 import { money, parseNum, plural, qty as fmtQty, round2 } from '../../lib/format';
 import { useQuery } from '../../lib/hooks';
 import { useWorkspace } from '../../lib/session';
-import { db, q } from '../../lib/supabase';
 import type { Offer } from '../../lib/types';
 import { fullName } from '../../lib/variants';
 import { Icon } from '../../ui/Icon';
 import { ProductImage } from '../../ui/ProductImage';
 import { toast } from '../../ui/toast';
+import { useAction } from '../../ui/useAction';
+import { placeOrder } from '../../api/market';
 
 /** Корзина магазина: товары из каталога, со страниц компаний и из пакетов — по одному заказу на компанию. */
 export function CartPage() {
@@ -17,7 +18,7 @@ export function CartPage() {
   const navigate = useNavigate();
   const { carts, setQty, clear } = useCarts(store.id);
   const [comments, setComments] = useState<Record<string, string>>({});
-  const [busy, setBusy] = useState(false);
+  const [busy, run] = useAction();
 
   const ids = Object.values(carts).flatMap((c) => Object.keys(c)).sort();
   const offers = useQuery(() => loadOffers(store.id, { variants: ids }), [store.id, ids.join(',')]);
@@ -37,31 +38,26 @@ export function CartPage() {
   const grand = round2(groups.reduce((s, g) => s + g.total, 0));
 
   const order = async (g: (typeof groups)[number]) => {
-    const id = await q<string>(db.rpc('place_order', {
-      p_store: store.id, p_supplier: g.companyId, p_comment: (comments[g.companyId] ?? '').trim(),
-      p_items: g.live.map((l) => ({ variant_id: l.variantId, qty: clampQty(l.n, l.offer) })),
-    }));
+    const id = await placeOrder(store.id, g.companyId, (comments[g.companyId] ?? '').trim(),
+      g.live.map((l) => ({ variantId: l.variantId, qty: clampQty(l.n, l.offer) })));
     clear(g.companyId);
     return id;
   };
 
   const submit = async (list: typeof groups) => {
-    setBusy(true);
     let done = 0;
     let last = '';
-    try {
+    const sent = await run(async () => {
       for (const g of list) {
         last = await order(g);
         done++;
       }
       toast.ok(done === 1 ? 'Заказ отправлен компании' : `Отправлено заказов: ${done}`);
       navigate(done === 1 ? `/orders/${last}` : '/orders');
-    } catch (e) {
-      toast.error(e);
+    });
+    if (!sent) {
       if (done) toast.ok(`Отправлено заказов: ${done}. Остальные остались в корзине.`);
       offers.reload();
-    } finally {
-      setBusy(false);
     }
   };
 

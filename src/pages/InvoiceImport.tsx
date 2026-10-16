@@ -1,13 +1,17 @@
 import { useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { money, qty as fmtQty, round2, round3 } from '../lib/format';
+import { money, qty as fmtQty, round2 } from '../lib/format';
 import { useQuery } from '../lib/hooks';
 import { decodeInvoice, invoiceUnit, type InvoiceItem } from '../lib/invoice';
 import { useContractors } from '../lib/refs';
 import { useWorkspace } from '../lib/session';
-import { db, q } from '../lib/supabase';
-import type { Contractor, Product } from '../lib/types';
+import { q } from '../lib/supabase';
+import type { Product } from '../lib/types';
 import { toast } from '../ui/toast';
+import { useAction } from '../ui/useAction';
+import { activeProductsQuery, importProducts } from '../api/products';
+import { addSupplier } from '../api/org';
+import { addSupplyLine, createSupplyDoc } from '../api/docs';
 
 const NEW = '__new__';
 
@@ -17,7 +21,7 @@ async function findProducts(orgId: string, codes: string[]): Promise<Map<string,
   const safe = [...new Set(codes)].filter((c) => /^[\w-]+$/.test(c));
   for (let i = 0; i < safe.length; i += 200) {
     const part = safe.slice(i, i + 200);
-    const base = () => db.from('products').select('*').eq('org_id', orgId).eq('archived', false);
+    const base = () => activeProductsQuery(orgId);
     const [main, extra] = await Promise.all([
       q<Product[]>(base().in('barcode', part)),
       q<Product[]>(base().overlaps('extra_barcodes', part)),
@@ -35,7 +39,7 @@ export function InvoiceImport() {
   const suppliers = useContractors(org.id, 'supplier');
   const [supplier, setSupplier] = useState<string | null>(null);
   const [createMissing, setCreateMissing] = useState(true);
-  const [busy, setBusy] = useState(false);
+  const [busy, run] = useAction();
 
   const parsed = useMemo(() => {
     try {
@@ -70,20 +74,15 @@ export function InvoiceImport() {
 
   const create = async () => {
     if (!chosen) return toast.error('Выберите поставщика');
-    setBusy(true);
-    try {
+    await run(async () => {
       let supplierId = chosen;
       if (chosen === NEW) {
-        supplierId = (await q<Contractor>(
-          db.from('contractors').insert({ org_id: org.id, kind: 'supplier', name: invoice.supplier }).select().single(),
-        )).id;
+        supplierId = (await addSupplier(org.id, invoice.supplier)).id;
       }
       let products = map;
       if (createMissing && missing.length) {
-        await q(db.rpc('import_products', {
-          p_org: org.id, p_store: null,
-          p_rows: missing.map((i) => ({ name: i.name || i.barcode, barcode: i.barcode, unit: invoiceUnit(i.unit), purchase_price: i.price })),
-        }));
+        await importProducts(org.id, null,
+          missing.map((i) => ({ name: i.name || i.barcode, barcode: i.barcode, unit: invoiceUnit(i.unit), purchase_price: i.price })));
         products = await findProducts(org.id, invoice.items.map((i) => i.barcode));
       }
 
@@ -97,16 +96,13 @@ export function InvoiceImport() {
       }
       if (!lines.size) throw new Error('Ни одного товара накладной нет в базе');
 
-      const doc = await q<string>(db.rpc('create_stock_doc', { p_store: store.id, p_kind: 'supply', p_comment: comment, p_supplier: supplierId }));
+      const doc = await createSupplyDoc(store.id, comment, supplierId);
       for (const [productId, l] of lines) {
-        await q(db.rpc('set_stock_doc_item', { p_doc: doc, p_product: productId, p_qty: round3(l.qty), p_price: round2(l.cost / l.qty) }));
+        await addSupplyLine(doc, productId, l.qty, l.cost);
       }
       toast.ok(`Черновик приёмки создан: товаров ${lines.size}. Проверьте и проведите.`);
       navigate(`/docs/supply/${doc}`, { replace: true });
-    } catch (e) {
-      toast.error(e);
-      setBusy(false);
-    }
+    }, { keepBusy: true });
   };
 
   const willAdd = invoice.items.length - (createMissing ? 0 : missing.length);

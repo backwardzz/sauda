@@ -1,8 +1,8 @@
-import { useRef, useState } from 'react';
+import { useRef } from 'react';
 import { fileToLogo } from '../lib/image';
 import { CompanyAvatar } from './CompanyAvatar';
 import { Icon } from './Icon';
-import { toast } from './toast';
+import { useAction } from './useAction';
 
 interface Props {
   name: string;
@@ -15,19 +15,12 @@ interface Props {
 /** Логотип с загрузкой из файла: картинка сжимается в браузере и сохраняется сразу. */
 export function LogoUpload({ name, value, onChange, size = 88 }: Props) {
   const file = useRef<HTMLInputElement>(null);
-  const [busy, setBusy] = useState(false);
+  const [busy, run] = useAction();
 
   const apply = async (make: () => Promise<string> | string) => {
     if (!onChange) return;
-    setBusy(true);
-    try {
-      await onChange(await make());
-    } catch (e) {
-      toast.error(e);
-    } finally {
-      setBusy(false);
-      if (file.current) file.current.value = '';
-    }
+    await run(async () => onChange(await make()));
+    if (file.current) file.current.value = '';
   };
 
   if (!onChange) return <CompanyAvatar name={name} logo={value} size={size} />;

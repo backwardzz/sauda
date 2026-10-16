@@ -4,12 +4,12 @@ import { readCart } from '../../lib/cart';
 import { money, plural } from '../../lib/format';
 import { useQuery, useStored } from '../../lib/hooks';
 import { useWorkspace } from '../../lib/session';
-import { db, q } from '../../lib/supabase';
-import { COMPANY_TYPE, type CompanyCard } from '../../lib/types';
+import { COMPANY_TYPE } from '../../lib/types';
 import { CitySelect } from '../../ui/CitySelect';
 import { CompanyAvatar, VerifiedBadge } from '../../ui/CompanyAvatar';
 import { Icon } from '../../ui/Icon';
 import { ProductImage } from '../../ui/ProductImage';
+import { companyDirectory } from '../../api/market';
 
 /** Компании площадки глазами магазина: кто чем торгует, в каких городах и на каких условиях. */
 export function Market() {
@@ -18,7 +18,7 @@ export function Market() {
   // по умолчанию — компании с филиалом в городе магазина; null — все города
   const [city, setCity] = useStored<number | null>(`sauda:market:city:${store.id}`, store.city_id);
 
-  const companies = useQuery(() => q<CompanyCard[]>(db.rpc('company_directory')), []);
+  const companies = useQuery(() => companyDirectory(), []);
 
   const term = search.trim().toLowerCase();
   const all = companies.data ?? [];

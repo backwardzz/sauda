@@ -3,17 +3,13 @@ import { Link } from 'react-router-dom';
 import { dateTime, fromDateInput, money, moneyShort, qty, toDateInput } from '../lib/format';
 import { useQuery } from '../lib/hooks';
 import { useTeamNames } from '../lib/refs';
-import { db, q } from '../lib/supabase';
-import type { Sale, Shift, StockDoc, StockRow } from '../lib/types';
 import { ColumnChart, type ChartPoint } from '../ui/ColumnChart';
 import { SaleModal } from './SaleModal';
 import { useReportScope, type SalesRow } from './reports/common';
-
-interface Totals {
-  positions: number;
-  purchase_sum: number;
-  sale_sum: number;
-}
+import { reportSales } from '../api/reports';
+import { countProducts, listLowStock, stockTotals } from '../api/products';
+import { listOpenShifts, listRecentSales } from '../api/pos';
+import { listRecentSupplies } from '../api/docs';
 
 export function Dashboard() {
   const scope = useReportScope(7);
@@ -24,34 +20,31 @@ export function Dashboard() {
   const cur = org.currency;
 
   const days = useQuery(
-    () => q<SalesRow[]>(db.rpc('report_sales', { ...scope.args, p_group: 'day' })),
+    () => reportSales(scope.args),
     [scope.args.p_org, scope.args.p_from, scope.args.p_to, scope.args.p_store],
   );
-  const stock = useQuery(async () => (await q<Totals[]>(db.rpc('stock_totals', { p_store: store.id })))[0], [store.id]);
+  const stock = useQuery(async () => (await stockTotals(store.id))[0], [store.id]);
   const low = useQuery(
-    () => q<StockRow[]>(db.from('product_stock').select('*').eq('store_id', store.id).eq('archived', false).eq('low', true).order('qty').limit(8)),
+    () => listLowStock(store.id),
     [store.id],
   );
   const shifts = useQuery(
-    () => q<Shift[]>(db.from('shifts').select('*').eq('org_id', org.id).eq('store_id', store.id).is('closed_at', null)),
+    () => listOpenShifts(org.id, store.id),
     [org.id, store.id],
   );
   const recent = useQuery(
-    () => q<Sale[]>(db.from('sales').select('*').eq('org_id', org.id).eq('store_id', store.id).order('created_at', { ascending: false }).limit(8)),
+    () => listRecentSales(org.id, store.id),
     [org.id, store.id],
   );
 
   const supplies = useQuery(
-    () => q<(StockDoc & { contractors: { name: string } | null })[]>(
-      db.from('stock_docs').select('*, contractors(name)').eq('org_id', org.id).eq('store_id', store.id).eq('kind', 'supply')
-        .eq('status', 'posted').order('created_at', { ascending: false }).limit(4) as never,
-    ),
+    () => listRecentSupplies(org.id, store.id),
     [org.id, store.id],
   );
 
   // пустая база товаров — повод предложить пакеты для нового магазина
   const products = useQuery(
-    async () => (await db.from('products').select('id', { count: 'exact', head: true }).eq('org_id', org.id).eq('archived', false)).count,
+    async () => (await countProducts(org.id)).count,
     [org.id],
   );
 

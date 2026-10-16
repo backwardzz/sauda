@@ -6,13 +6,14 @@ import { useChanged, useQuery } from '../lib/hooks';
 import { fullProductName } from '../lib/productAttrs';
 import { categoryTree, useCategories, useContractors, useQuickGroups } from '../lib/refs';
 import { useWorkspace } from '../lib/session';
-import { db, q } from '../lib/supabase';
 import { MOVE_REASON, PACK_UNITS, PACKAGES, SIZE_UNITS, UNITS, type PackUnit, type Product, type SizeUnit, type StockMove, type Unit } from '../lib/types';
 import { DataTable, type Column } from '../ui/DataTable';
 import { Icon } from '../ui/Icon';
 import { Confirm } from '../ui/Modal';
 import { toast } from '../ui/toast';
 import { CategoryModal } from './CategoryModal';
+import { useAction } from '../ui/useAction';
+import { addProduct, archiveProduct, getProduct, listProductStock, listStockMoves, updateProduct } from '../api/products';
 
 interface Form {
   /** Название без объёма, процента и упаковки: они в своих полях. */
@@ -69,25 +70,22 @@ export function ProductCard() {
 
   const [form, setForm] = useState<Form>(EMPTY);
   const [tab, setTab] = useState<'main' | 'moves'>('main');
-  const [busy, setBusy] = useState(false);
+  const [busy, run] = useAction();
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [catModal, setCatModal] = useState(false);
 
   const product = useQuery(
-    async () => (id ? q<Product>(db.from('products').select('*').eq('id', id).eq('org_id', org.id).single()) : null),
+    async () => (id ? getProduct(id, org.id) : null),
     [id, org.id],
   );
   const stock = useQuery(
-    async () => (id ? q<{ store_id: string; qty: number }[]>(db.from('stock').select('store_id, qty').eq('product_id', id)) : []),
+    async () => (id ? listProductStock(id) : []),
     [id],
   );
   const moves = useQuery(
     async () =>
       id && tab === 'moves'
-        ? q<StockMove[]>(
-            db.from('stock_moves').select('id, delta, qty_after, reason, ref_number, created_at')
-              .eq('product_id', id).eq('store_id', store.id).order('id', { ascending: false }).limit(200),
-          )
+        ? listStockMoves(id, store.id)
         : [],
     [id, tab, store.id],
   );
@@ -138,8 +136,7 @@ export function ProductCard() {
     const pct = form.percent.trim() === '' ? null : parseNum(form.percent);
     if (pct != null && (pct < 0 || pct > 100)) return toast.error('Процент — от 0 до 100');
     if (!form.barcode.trim()) return toast.error('Укажите штрихкод или сгенерируйте внутренний');
-    setBusy(true);
-    try {
+    await run(async () => {
       const row = {
         org_id: org.id,
         kind,
@@ -159,27 +156,20 @@ export function ProductCard() {
         quick_group_id: form.quickGroup || null,
         quick_name: form.quickName.trim(),
       };
-      if (id) await q(db.from('products').update(row).eq('id', id));
-      else await q(db.from('products').insert(row));
+      if (id) await updateProduct(row, id);
+      else await addProduct(row);
       toast.ok(id ? 'Изменения сохранены' : kind === 'service' ? 'Услуга создана' : 'Товар создан');
       navigate('/products');
-    } catch (e) {
-      toast.error(e);
-      setBusy(false);
-    }
+    }, { keepBusy: true });
   };
 
   const remove = async () => {
     if (!id) return;
-    setBusy(true);
-    try {
-      await q(db.from('products').update({ archived: true, quick_group_id: null }).eq('id', id));
+    await run(async () => {
+      await archiveProduct(id);
       toast.ok('Товар удалён');
       navigate('/products');
-    } catch (e) {
-      toast.error(e);
-      setBusy(false);
-    }
+    }, { keepBusy: true });
   };
 
   const moveColumns: Column<StockMove>[] = [

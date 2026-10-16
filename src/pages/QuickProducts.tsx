@@ -3,13 +3,13 @@ import { money } from '../lib/format';
 import { useQuery } from '../lib/hooks';
 import { useQuickGroups } from '../lib/refs';
 import { useWorkspace } from '../lib/session';
-import { db, q } from '../lib/supabase';
 import type { Product, QuickGroup } from '../lib/types';
 import { DataTable, type Column } from '../ui/DataTable';
 import { Icon } from '../ui/Icon';
 import { Modal } from '../ui/Modal';
 import { ProductSearch } from '../ui/ProductSearch';
 import { toast } from '../ui/toast';
+import { addQuickGroup, addToQuickGroup, deleteQuickGroup, listQuickProducts, removeFromQuickGroup, renameQuickGroup, saveQuickName, setQuickGroupSort, setQuickSort } from '../api/products';
 
 export function QuickProducts() {
   const { org } = useWorkspace();
@@ -28,10 +28,7 @@ export function QuickProducts() {
   const items = useQuery(
     async () =>
       current
-        ? q<Product[]>(
-            db.from('products').select('*').eq('org_id', org.id).eq('quick_group_id', current.id)
-              .eq('archived', false).order('quick_sort').order('name'),
-          )
+        ? listQuickProducts(org.id, current.id)
         : [],
     [org.id, current?.id],
   );
@@ -49,12 +46,10 @@ export function QuickProducts() {
     run(async () => {
       if (!groupName.trim()) throw new Error('Укажите название группы');
       if (edit === 'new') {
-        const g = await q<QuickGroup>(
-          db.from('quick_groups').insert({ org_id: org.id, name: groupName.trim(), sort: list.length }).select().single(),
-        );
+        const g = await addQuickGroup(org.id, groupName, list.length);
         setGroupId(g.id);
       } else if (edit) {
-        await q(db.from('quick_groups').update({ name: groupName.trim() }).eq('id', edit.id));
+        await renameQuickGroup(groupName, edit.id);
       }
       setEdit(null);
       groups.reload();
@@ -63,7 +58,7 @@ export function QuickProducts() {
   const deleteGroup = () =>
     run(async () => {
       if (!edit || edit === 'new') return;
-      await q(db.from('quick_groups').delete().eq('id', edit.id));
+      await deleteQuickGroup(edit.id);
       setEdit(null);
       groups.reload();
     }, 'Группа удалена, товары убраны с кассы');
@@ -75,7 +70,7 @@ export function QuickProducts() {
       if (!other) return;
       const order = list.map((x) => x.id);
       [order[i], order[i + dir]] = [order[i + dir], order[i]];
-      await Promise.all(order.map((id, sort) => q(db.from('quick_groups').update({ sort }).eq('id', id))));
+      await Promise.all(order.map((id, sort) => setQuickGroupSort(sort, id)));
       groups.reload();
     });
 
@@ -86,27 +81,27 @@ export function QuickProducts() {
       if (!rows[i + dir]) return;
       const order = rows.map((x) => x.id);
       [order[i], order[i + dir]] = [order[i + dir], order[i]];
-      await Promise.all(order.map((id, quick_sort) => q(db.from('products').update({ quick_sort }).eq('id', id))));
+      await Promise.all(order.map((id, quick_sort) => setQuickSort(quick_sort, id)));
       items.reload();
     });
 
   const addProduct = (p: Product) =>
     run(async () => {
       if (!current) return;
-      await q(db.from('products').update({ quick_group_id: current.id, quick_sort: (items.data ?? []).length }).eq('id', p.id));
+      await addToQuickGroup(p.id, current.id, (items.data ?? []).length);
       items.reload();
     }, `Добавлено: ${p.name}`);
 
   const removeProduct = (p: Product) =>
     run(async () => {
-      await q(db.from('products').update({ quick_group_id: null }).eq('id', p.id));
+      await removeFromQuickGroup(p.id);
       items.reload();
     });
 
   const saveName = () =>
     run(async () => {
       if (!rename) return;
-      await q(db.from('products').update({ quick_name: quickName.trim() }).eq('id', rename.id));
+      await saveQuickName(quickName, rename.id);
       setRename(null);
       items.reload();
     });

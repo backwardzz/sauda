@@ -3,21 +3,23 @@ import { Link } from 'react-router-dom';
 import { cityName, useCities } from '../../lib/cities';
 import { dateOnly, formatPhone, money, parseNum } from '../../lib/format';
 import { useOrg } from '../../lib/session';
-import { db, q } from '../../lib/supabase';
 import { COMPANY_TYPE, type CompanyType, type PriceAccessMode } from '../../lib/types';
 import { VerifiedBadge } from '../../ui/CompanyAvatar';
 import { Icon } from '../../ui/Icon';
 import { LogoUpload } from '../../ui/LogoUpload';
 import { Modal } from '../../ui/Modal';
 import { PhoneInput } from '../../ui/PhoneInput';
+import { PhoneLink } from '../../ui/PhoneLink';
 import { toast } from '../../ui/toast';
 import { ApiKeys } from './ApiKeys';
-import { BranchRequests } from './BranchRequests';
 import { Branches } from './Branches';
+import { useAction } from '../../ui/useAction';
+import { setLogo, updateOrgProfile } from '../../api/org';
+import { updateCompanyProfile } from '../../api/company';
 
 /** Профиль магазина или компании: сначала просмотр, правка — по кнопке. */
 export function Profile() {
-  const { org, role, company, branchId, branches, stores, reload } = useOrg();
+  const { org, role, company, branches, stores, reload } = useOrg();
   const cities = useCities();
   const [editing, setEditing] = useState(false);
   const owner = role === 'owner';
@@ -36,7 +38,7 @@ export function Profile() {
   ].filter(Boolean) as string[];
 
   const saveLogo = async (logo: string) => {
-    await q(db.from('orgs').update({ logo_url: logo }).eq('id', org.id));
+    await setLogo(logo, org.id);
     toast.ok(logo ? 'Логотип обновлён' : 'Логотип убран');
     await reload();
   };
@@ -81,7 +83,7 @@ export function Profile() {
           <div className="section-title">Реквизиты и контакты</div>
           <dl className="kv info">
             <dt>БИН / ИИН</dt><dd>{org.bin || '—'}</dd>
-            <dt>Телефон</dt><dd>{org.phone ? <a href={`tel:${org.phone.replace(/[^\d+]/g, '')}`}>{org.phone}</a> : '—'}</dd>
+            <dt>Телефон</dt><dd>{org.phone ? <PhoneLink phone={org.phone} /> : '—'}</dd>
             <dt>Почта</dt><dd>{org.email ? <a href={`mailto:${org.email}`}>{org.email}</a> : '—'}</dd>
             <dt>Контактное лицо</dt><dd>{org.contact_name || '—'}</dd>
             {isCompany && <><dt>Сайт</dt><dd>{company?.website ? <a href={company.website} target="_blank" rel="noreferrer noopener">{company.website.replace(/^https?:\/\//, '')}</a> : '—'}</dd></>}
@@ -117,7 +119,6 @@ export function Profile() {
         )}
       </div>
 
-      {isCompany && !branchId && <BranchRequests />}
       {isCompany && <Branches />}
       {isCompany && owner && <ApiKeys />}
 
@@ -135,7 +136,7 @@ function ProfileEditor({ onClose }: { onClose: () => void }) {
     min: Number(company?.min_order) ? String(Number(company?.min_order)) : '', delivery: company?.delivery_note ?? '', payment: company?.payment_terms ?? '',
     prices: (company?.price_access ?? 'stores') as PriceAccessMode,
   });
-  const [busy, setBusy] = useState(false);
+  const [busy, run] = useAction();
   const set = (patch: Partial<typeof form>) => setForm({ ...form, ...patch });
 
   const save = async () => {
@@ -143,25 +144,19 @@ function ProfileEditor({ onClose }: { onClose: () => void }) {
     const website = form.website.trim() && !/^https?:\/\//i.test(form.website.trim()) ? `https://${form.website.trim()}` : form.website.trim();
     if (!form.name.trim()) return toast.error('Укажите название');
     if (bin && !/^\d{12}$/.test(bin)) return toast.error('БИН или ИИН — это 12 цифр');
-    setBusy(true);
-    try {
-      await q(db.from('orgs').update({
-        name: form.name.trim(), phone: formatPhone(form.phone), email: form.email.trim(), contact_name: form.contact.trim(), bin,
-      }).eq('id', org.id));
+    await run(async () => {
+      await updateOrgProfile(org.id, { name: form.name.trim(), phone: formatPhone(form.phone), email: form.email.trim(), contactName: form.contact.trim(), bin });
       if (isCompany) {
-        await q(db.from('companies').update({
-          company_type: form.type, description: form.description.trim(), website,
-          min_order: Math.max(parseNum(form.min), 0), delivery_note: form.delivery.trim(), payment_terms: form.payment.trim(),
-          price_access: form.prices,
-        }).eq('org_id', org.id));
+        await updateCompanyProfile(org.id, {
+          type: form.type, description: form.description.trim(), website,
+          minOrder: Math.max(parseNum(form.min), 0), deliveryNote: form.delivery.trim(), paymentTerms: form.payment.trim(),
+          priceAccess: form.prices,
+        });
       }
       toast.ok('Профиль сохранён');
       await reload();
       onClose();
-    } catch (e) {
-      toast.error(e);
-      setBusy(false);
-    }
+    }, { keepBusy: true });
   };
 
   return (

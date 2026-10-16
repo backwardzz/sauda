@@ -5,15 +5,16 @@ import { dateTime, money, moneyShort, qty as fmtQty } from '../../lib/format';
 import { useQuery } from '../../lib/hooks';
 import { useCompany } from '../../lib/session';
 import { db, q } from '../../lib/supabase';
-import { ORDER_STATUS, type Order } from '../../lib/types';
+import { ORDER_STATUS } from '../../lib/types';
 import { CompanyAvatar } from '../../ui/CompanyAvatar';
+import { listCompanyOrders } from '../../api/market';
 
 /** Главная компании: что требует действия прямо сейчас, что продаётся и что заканчивается. */
 export function CompanyHome() {
   const { org, company, branches } = useCompany();
   const navigate = useNavigate();
   const orders = useQuery(
-    () => q<Order[]>(db.from('orders').select('*').eq('supplier_org', org.id).order('created_at', { ascending: false }).limit(1000)),
+    () => listCompanyOrders(org.id),
     [org.id],
   );
   const catalog = useCompanyCatalog(org.id);
@@ -84,7 +85,7 @@ export function CompanyHome() {
       {company && !company.description && products > 0 && (
         <div className="card banner">
           <span className="grow">Расскажите магазинам о компании: логотип, описание и условия доставки повышают доверие к заказу.</span>
-          <Link className="btn" to="/company">Заполнить профиль</Link>
+          <Link className="btn" to="/profile">Заполнить профиль</Link>
         </div>
       )}
 

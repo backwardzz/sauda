@@ -2,13 +2,13 @@ import { Fragment, useMemo, useState } from 'react';
 import { useCities } from '../../lib/cities';
 import { useCompanyCatalog } from '../../lib/companyCatalog';
 import { moneyShort, plural, qty as fmtQty } from '../../lib/format';
-import { byProduct, byRegion, matrix, type Area, type GeoData, type GeoTotal } from '../../lib/geo';
+import { byProduct, byRegion, matrix, type Area, type GeoTotal } from '../../lib/geo';
 import { useQuery } from '../../lib/hooks';
 import { KZ_SHAPES, KZ_VIEWBOX } from '../../lib/kzMap';
 import { useCompany } from '../../lib/session';
-import { db, q } from '../../lib/supabase';
 import { Icon } from '../../ui/Icon';
 import { lastDays, PeriodPicker, periodRange } from '../../ui/Period';
+import { companyGeo } from '../../api/company';
 
 type Metric = 'sum' | 'qty';
 
@@ -30,7 +30,7 @@ export function CompanyGeo() {
 
   const range = periodRange(period);
   const geo = useQuery(
-    () => q<GeoData>(db.rpc('company_geo', { p_org: org.id, p_from: range.from, p_to: range.to })),
+    () => companyGeo(org.id, range.from, range.to),
     [org.id, range.from, range.to],
   );
 

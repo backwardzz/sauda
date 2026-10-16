@@ -275,6 +275,14 @@ async function main() {
   await must(c.rpc('close_shift', { p_shift: shift2, p_closing_cash: 450 }));
   check('кассир не может изменить свою роль',
     (await must(c.from('org_members').update({ role: 'owner' }).eq('org_id', orgA).select())).length === 0);
+  // первый вход по приглашению: форма входа до входа узнаёт, что на почту есть приглашение, а аккаунта нет
+  const guestDb = createClient(url, key, { auth: { persistSession: false } });
+  const newcomer = `newcomer-${Date.now()}@test.local`;
+  eq('без приглашения придумать пароль не предлагается', await must(guestDb.rpc('invite_pending', { p_email: newcomer })), false);
+  await must(a.from('invites').insert({ org_id: orgA, email: newcomer, role: 'cashier' }));
+  eq('приглашённому без аккаунта предлагается придумать пароль', await must(guestDb.rpc('invite_pending', { p_email: newcomer.toUpperCase() })), true);
+  eq('у кого аккаунт уже есть, входит как обычно', await must(guestDb.rpc('invite_pending', { p_email: cashierEmail })), false);
+  await must(a.from('invites').delete().eq('email', newcomer));
 
   console.log('Импорт');
   const imp = await must(a.rpc('import_products', {
