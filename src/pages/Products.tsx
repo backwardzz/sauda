@@ -72,13 +72,16 @@ export function Products() {
 
   /** Фильтры списка: общие для страницы таблицы и для полной выгрузки. */
   const scoped = () => {
-    let query = db.from('products').select('*', { count: 'exact' }).eq('org_id', org.id).eq('archived', false);
+    let query = productsPageQuery(org.id);
     // в названиях дробь пишется с запятой: «0.5» в поиске находит «0,5 л»
-    const s = safeTerm(term).replace(/(d).(d)/g, '$1,$2');
+    const s = safeTerm(term);
     if (s) {
+      // запятая в or() разделяет условия, поэтому значение с ней берётся в кавычки (safeTerm кавычки убирает)
+      const comma = s.replace(/(\d)\.(\d)/g, '$1,$2');
+      const name = comma === s ? '' : `,name.ilike."%${comma}%"`;
       // доп. код ищется только целиком: пустой набор в cs.{} совпал бы со всеми товарами
       const code = /^[\w-]+$/.test(s) ? `,extra_barcodes.cs.{${s}}` : '';
-      query = query.or(`name.ilike.%${s}%,barcode.ilike.${s}%,sku.ilike.${s}%${code}`);
+      query = query.or(`name.ilike.%${s}%${name},barcode.ilike.${s}%,sku.ilike.${s}%${code}`);
     }
     if (category === 'none') query = query.is('category_id', null);
     else if (category !== 'all') {
