@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import { STOCK_BADGE, useCompanyCatalog, variantState, type StockState } from '../../lib/companyCatalog';
 import { money, moneyShort, qty as fmtQty, round2 } from '../../lib/format';
 import { useCompany } from '../../lib/session';
-import { db, q } from '../../lib/supabase';
 import type { Branch, CompanyProduct, Variant, VariantStats } from '../../lib/types';
 import { fullName } from '../../lib/variants';
 import { parseStockImport } from '../../lib/stockImport';
@@ -12,6 +11,8 @@ import { Icon } from '../../ui/Icon';
 import { NumCell } from '../../ui/NumCell';
 import { ProductImage } from '../../ui/ProductImage';
 import { toast } from '../../ui/toast';
+import { useAction } from '../../ui/useAction';
+import { clearBranchPrice, importCompanyStock, setBranchListed, setBranchPrice, setCompanyStock } from '../../api/company';
 
 type Filter = 'all' | StockState;
 
@@ -26,7 +27,7 @@ export function CompanyStock() {
   const [filter, setFilter] = useState<Filter>('all');
   // что показывают столбцы филиалов: остатки, свои цены или «продаётся ли здесь»
   const [mode, setMode] = useState<'qty' | 'price' | 'listed'>('qty');
-  const [busy, setBusy] = useState(false);
+  const [busy, run] = useAction();
   const file = useRef<HTMLInputElement>(null);
 
   const data = useCompanyCatalog(org.id);
@@ -62,19 +63,18 @@ export function CompanyStock() {
   };
 
   const setStock = async (v: Variant, branchId: string, n: number) => {
-    await q(db.rpc('set_company_stock', { p_variant: v.id, p_branch: branchId, p_qty: n }));
+    await setCompanyStock(v.id, branchId, n);
     data.reload();
   };
 
   const importFile = async (f: File | undefined) => {
     if (!f) return;
-    setBusy(true);
-    try {
+    await run(async () => {
       const { items, columns } = parseStockImport(await readXlsx(f), branches);
       if (items.length === 0) throw new Error('В файле не нашлось ни одной строки с остатком');
       const total = { updated: 0, unchanged: 0, not_found: [] as string[] };
       for (let i = 0; i < items.length; i += 1000) {
-        const res = await q<typeof total>(db.rpc('import_company_stock', { p_org: org.id, p_rows: items.slice(i, i + 1000) }));
+        const res = await importCompanyStock(org.id, items.slice(i, i + 1000));
         total.updated += res.updated;
         total.unchanged += res.unchanged;
         total.not_found.push(...res.not_found);
@@ -83,11 +83,7 @@ export function CompanyStock() {
       toast.ok(`Остатки загружены (${columns.join(', ')}): изменено ${total.updated}, без изменений ${total.unchanged}`
         + (missing ? `. Штрихкодов нет в каталоге: ${missing} — заведите эти товары в «Каталоге»` : ''));
       data.reload();
-    } catch (e) {
-      toast.error(e);
-    } finally {
-      setBusy(false);
-    }
+    });
   };
 
   const download = () => {
@@ -184,7 +180,7 @@ export function CompanyStock() {
                     return (
                       <td key={b.id} className="center">
                         <input type="checkbox" checked={!off} disabled={!canManage} aria-label={`Продаётся, ${title}`}
-                          onChange={(e) => act(() => q(db.rpc('set_branch_listed', { p_variant: v.id, p_branch: b.id, p_listed: e.target.checked })))} />
+                          onChange={(e) => act(() => setBranchListed(v.id, b.id, e.target.checked))} />
                       </td>
                     );
                   }
@@ -193,8 +189,8 @@ export function CompanyStock() {
                       <td key={b.id} className={`right ${off ? 'cell-off' : ''}`} title={off ? 'Этот филиал вид не продаёт' : own == null ? 'Базовая цена с надбавкой филиала. Введите число, чтобы задать свою' : 'Своя цена филиала. Сотрите, чтобы вернуть базовую'}>
                         {canManage
                           ? <NumCell value={own ?? null} placeholder={money(base)} aria-label={`Цена, ${title}`}
-                              onSave={(n) => act(() => q(db.rpc('set_branch_price', { p_variant: v.id, p_branch: b.id, p_price: n })))}
-                              onClear={() => act(() => q(db.rpc('set_branch_price', { p_variant: v.id, p_branch: b.id, p_price: null })))} />
+                              onSave={(n) => act(() => setBranchPrice(v.id, b.id, n))}
+                              onClear={() => act(() => clearBranchPrice(v.id, b.id))} />
                           : own != null ? <b>{money(own)}</b> : money(base)}
                       </td>
                     );

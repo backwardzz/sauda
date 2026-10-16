@@ -4,19 +4,12 @@ import { dateTime, money, qty } from '../lib/format';
 import { useQuery } from '../lib/hooks';
 import { useTeamNames } from '../lib/refs';
 import { useSession } from '../lib/session';
-import { db, q } from '../lib/supabase';
-import type { FiscalReceipt, Sale, SaleItem } from '../lib/types';
+import type { FiscalReceipt } from '../lib/types';
 import { Icon } from '../ui/Icon';
 import { Modal } from '../ui/Modal';
+import { getSale, listSaleFiscalReceipts, listSaleReturns, type SaleFull } from '../api/pos';
 
-export interface SaleFull extends Sale {
-  sale_items: SaleItem[];
-  registers: { name: string; receipt_header: string; receipt_footer: string } | null;
-  contractors: { name: string } | null;
-  stores: { name: string; address: string } | null;
-}
 
-export const SALE_SELECT = '*, sale_items(*), registers(name, receipt_header, receipt_footer), contractors(name), stores(name, address)';
 
 interface ReceiptProps {
   sale: SaleFull;
@@ -85,16 +78,14 @@ export function SaleModal({ saleId, onClose, allowReturn, received }: Props) {
   const { org } = useSession();
   const navigate = useNavigate();
   const teamName = useTeamNames();
-  const sale = useQuery(() => q<SaleFull>(db.from('sales').select(SALE_SELECT).eq('id', saleId).single() as never), [saleId]);
+  const sale = useQuery(() => getSale(saleId), [saleId]);
   const returns = useQuery(
-    () => q<Pick<Sale, 'id' | 'number' | 'total' | 'created_at'>[]>(
-      db.from('sales').select('id, number, total, created_at').eq('parent_id', saleId).order('created_at'),
-    ),
+    () => listSaleReturns(saleId),
     [saleId],
   );
 
   const fiscal = useQuery(
-    async () => (await q<FiscalReceipt[]>(db.from('fiscal_receipts').select('*').eq('sale_id', saleId)))[0] ?? null,
+    async () => (await listSaleFiscalReceipts(saleId))[0] ?? null,
     [saleId],
   );
   // чек уходит в Webkassa сразу после продажи: пока он в пути, статус перечитывается

@@ -1,6 +1,6 @@
 import { useQuery } from './hooks';
-import { db, q } from './supabase';
 import type { CompanyProduct, Variant, VariantStats } from './types';
+import { companyStats, listCompanyProducts, listCompanyStock, listVariantLimits, listVariants } from '../api/company';
 
 export interface CompanyCatalog {
   products: CompanyProduct[];
@@ -19,13 +19,12 @@ export interface CompanyCatalog {
 export function useCompanyCatalog(orgId: string) {
   return useQuery<CompanyCatalog>(async () => {
     const [products, rows, limits, stock, stats] = await Promise.all([
-      q<CompanyProduct[]>(db.from('company_products').select('*').eq('org_id', orgId).eq('archived', false).order('name').limit(5000)),
-      q<Omit<Variant, 'min_stock'>[]>(db.from('company_variants').select('*').eq('org_id', orgId).eq('archived', false).order('sort').order('price').limit(20000)),
+      listCompanyProducts(orgId),
+      listVariants(orgId),
       // порог «мало на складе» лежит отдельно: его видят только сотрудники компании, а виды товара — все магазины
-      q<{ variant_id: string; min_stock: number }[]>(db.from('company_variant_limits').select('variant_id, min_stock').eq('org_id', orgId).limit(20000)),
-      q<{ variant_id: string; branch_id: string; qty: number; price: number | null; listed: boolean }[]>(
-        db.from('company_stock').select('variant_id, branch_id, qty, price, listed').eq('org_id', orgId).limit(50000)),
-      q<VariantStats[]>(db.rpc('company_stats', { p_org: orgId })),
+      listVariantLimits(orgId),
+      listCompanyStock(orgId),
+      companyStats(orgId),
     ]);
     const minStock = new Map(limits.map((l) => [l.variant_id, Number(l.min_stock)]));
     const variants: Variant[] = rows.map((v) => ({ ...v, min_stock: minStock.get(v.id) ?? null }));

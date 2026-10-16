@@ -1298,6 +1298,9 @@ isOneToOne: false
 "import_products":
 { Args: { "p_org": string | null,"p_rows": unknown,"p_store": string | null}; Returns: Json
                            },
+"invite_pending":
+{ Args: { "p_email": string | null}; Returns: boolean
+                           },
 "log_cancel":
 { Args: { "p_name": string | null,"p_product": string | null,"p_qty_from": number | null,"p_qty_to": number | null,"p_register": string | null}; Returns: undefined
                            },

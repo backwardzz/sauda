@@ -1,5 +1,5 @@
 import { fileToPhoto } from './image';
-import { db, errorText } from './supabase';
+import { removeFile, uploadPublicFile } from '../api/files';
 
 // Открытые базы товаров (лицензия CC BY-SA): в каталоге хранится только ссылка на фото.
 const SOURCES = ['world.openfoodfacts.org', 'world.openbeautyfacts.org', 'world.openproductsfacts.org'];
@@ -29,13 +29,11 @@ export async function uploadProductPhoto(orgId: string, file: File): Promise<str
   const blob = await fileToPhoto(file);
   const path = `${orgId}/${crypto.randomUUID()}.${blob.type === 'image/webp' ? 'webp' : 'jpg'}`;
   // имя файла случайное и не повторяется, поэтому картинку можно кешировать надолго
-  const { error } = await db.storage.from(BUCKET).upload(path, blob, { contentType: blob.type, cacheControl: '31536000' });
-  if (error) throw new Error(errorText(error));
-  return db.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
+  return uploadPublicFile(BUCKET, path, blob);
 }
 
 /** Убирает из хранилища фото, загруженное с компьютера. Чужие ссылки (открытые базы, свой сайт) не трогает. */
 export async function removeProductPhoto(url: string): Promise<void> {
   const path = url.split(`/storage/v1/object/public/${BUCKET}/`)[1];
-  if (path) await db.storage.from(BUCKET).remove([decodeURIComponent(path)]);
+  if (path) await removeFile(BUCKET, decodeURIComponent(path));
 }

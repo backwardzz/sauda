@@ -3,19 +3,9 @@ import { dateTime, qty } from '../lib/format';
 import { useQuery } from '../lib/hooks';
 import { useTeamNames } from '../lib/refs';
 import { useWorkspace } from '../lib/session';
-import { db, q } from '../lib/supabase';
 import { DataTable, type Column } from '../ui/DataTable';
 import { lastDays, PeriodPicker, periodRange } from '../ui/Period';
-
-interface Row {
-  id: string;
-  cashier_id: string | null;
-  name: string;
-  qty_from: number;
-  qty_to: number;
-  created_at: string;
-  registers: { name: string } | null;
-}
+import { type CanceledItem as Row, listCanceledItems } from '../api/pos';
 
 export function Canceled() {
   const { org, store } = useWorkspace();
@@ -25,11 +15,7 @@ export function Canceled() {
 
   const list = useQuery(() => {
     const { from, to } = periodRange(period);
-    return q<Row[]>(
-      db.from('canceled_items').select('id, cashier_id, name, qty_from, qty_to, created_at, registers(name)')
-        .eq('org_id', org.id).eq('store_id', store.id).gte('created_at', from).lt('created_at', to)
-        .order('created_at', { ascending: false }).limit(1000) as never,
-    );
+    return listCanceledItems(org.id, store.id, from, to);
   }, [org.id, store.id, period]);
 
   const rows = (list.data ?? []).filter((r) => r.name.toLowerCase().includes(search.trim().toLowerCase()));

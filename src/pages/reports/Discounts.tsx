@@ -1,12 +1,12 @@
 import { useState } from 'react';
 import { dateTime, money, qty } from '../../lib/format';
 import { useQuery } from '../../lib/hooks';
-import { db, q } from '../../lib/supabase';
 import { exportXlsx } from '../../lib/xlsx';
 import { DataTable, type Column } from '../../ui/DataTable';
 import { Icon } from '../../ui/Icon';
 import { toast } from '../../ui/toast';
 import { useReportScope } from './common';
+import { listDiscountedItems } from '../../api/reports';
 
 interface Row {
   id: string;
@@ -25,12 +25,7 @@ export function DiscountsReport() {
   const [search, setSearch] = useState('');
 
   const data = useQuery(async () => {
-    let query = db.from('sale_items')
-      .select('id, name, barcode, unit, qty, price, discount, total, sales!inner(created_at, number, kind, store_id)')
-      .eq('org_id', scope.org.id).gt('discount', 0).eq('sales.kind', 'sale')
-      .gte('sales.created_at', scope.range.from).lt('sales.created_at', scope.range.to);
-    if (scope.storeId) query = query.eq('sales.store_id', scope.storeId);
-    const rows = await q<Row[]>(query.limit(2000) as never);
+    const rows = await listDiscountedItems<Row>(scope.org.id, scope.range.from, scope.range.to, scope.storeId);
     return rows.sort((a, b) => b.sales.created_at.localeCompare(a.sales.created_at));
   }, [scope.org.id, scope.range.from, scope.range.to, scope.storeId]);
 

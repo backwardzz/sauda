@@ -4,30 +4,13 @@ import { bestOffer, clampQty, loadOffers, useCarts } from '../../lib/cart';
 import { money, parseNum, plural, qty as fmtQty } from '../../lib/format';
 import { useChanged, useDebounced, useQuery, useStored } from '../../lib/hooks';
 import { useWorkspace } from '../../lib/session';
-import { db, q } from '../../lib/supabase';
-import type { CatalogItem } from '../../lib/starter';
 import type { Offer } from '../../lib/types';
 import { Pager } from '../../ui/DataTable';
 import { CompanyAvatar, VerifiedBadge } from '../../ui/CompanyAvatar';
 import { Icon } from '../../ui/Icon';
 import { toast } from '../../ui/toast';
-
-interface CategoryRow {
-  category: string;
-  subcategory: string;
-  cnt: number;
-}
-
-type Row = CatalogItem & { company: string; offers: number; total: number };
-
-interface BrandRow {
-  /** пустая строка — товары без распознанного производителя («Другие») */
-  company: string;
-  cnt: number;
-  mine: number;
-  logo_url: string;
-  verified: boolean;
-}
+import { useAction } from '../../ui/useAction';
+import { addCatalogProducts, catalogCategories, catalogCompanyList, type CatalogRow as Row, catalogSearch, type CategoryRow } from '../../api/products';
 
 /** Заглушка для аптек: справочника лекарств ещё нет. */
 export function PharmacyStub({ title }: { title: string }) {
@@ -68,23 +51,20 @@ function CatalogList() {
   const [picked, setPicked] = useState<Set<string>>(new Set());
   /** штрихкод → выбранное предложение, если магазин предпочёл не самое дешёвое */
   const [chosen, setChosen] = useState<Record<string, string>>({});
-  const [busy, setBusy] = useState(false);
+  const [busy, run] = useAction();
 
   if (useChanged([term, category, sub, brand, onlyNew, onlyOffers, pageSize]) && page !== 0) setPage(0);
   // при поиске и отборе «с ценами» ищем по всей категории, минуя карточки производителей
   const showBrands = category !== null && brand === null && !term && !onlyOffers;
 
-  const cats = useQuery(() => q<CategoryRow[]>(db.rpc('catalog_categories', { p_org: org.id })), [org.id]);
+  const cats = useQuery(() => catalogCategories(org.id), [org.id]);
   const brands = useQuery(
     // список нужен и внутри производителя: из него берутся аватарка и отметка для шапки
-    async () => (category !== null ? q<BrandRow[]>(db.rpc('catalog_company_list', { p_org: org.id, p_category: category, p_subcategory: sub })) : []),
+    async () => (category !== null ? catalogCompanyList(org.id, category, sub) : []),
     [org.id, category, sub],
   );
   const list = useQuery(
-    async () => (showBrands ? [] : q<Row[]>(db.rpc('catalog_search', {
-      p_org: org.id, p_term: term, p_category: category, p_subcategory: sub, p_only_new: onlyNew,
-      p_limit: pageSize, p_offset: page * pageSize, p_company: term ? null : brand, p_only_offers: onlyOffers,
-    }))),
+    async () => (showBrands ? [] : catalogSearch(org.id, term, category, sub, onlyNew, pageSize, page, brand, onlyOffers)),
     [org.id, term, category, sub, brand, onlyNew, onlyOffers, page, pageSize, showBrands],
   );
   const rows = useMemo(() => list.data ?? [], [list.data]);
@@ -136,14 +116,13 @@ function CatalogList() {
   };
 
   const add = async (ids: string[]) => {
-    setBusy(true);
-    try {
+    await run(async () => {
       // закупочная цена берётся из выбранного предложения компании, если товар сейчас на странице
       const prices = rows.filter((r) => ids.includes(r.id)).flatMap((r) => {
         const o = offerOf(r);
         return o ? [{ id: r.id, purchase_price: Number(o.price) }] : [];
       });
-      const res = await q<{ created: number; skipped: number }>(db.rpc('add_catalog_products', { p_org: org.id, p_ids: ids, p_prices: prices }));
+      const res = await addCatalogProducts(org.id, ids, prices);
       toast.ok(
         `Добавлено товаров: ${res.created}` + (res.skipped ? `, уже были: ${res.skipped}` : '') +
           (prices.length ? '. Закупочная цена взята у компании, розничную укажите в карточке товара.' : '. Цены укажите при приёмке или в карточке товара.'),
@@ -155,11 +134,7 @@ function CatalogList() {
         return next;
       });
       list.reload();
-    } catch (e) {
-      toast.error(e);
-    } finally {
-      setBusy(false);
-    }
+    });
   };
 
   const select = (c: string | null, s: string | null = null) => {
