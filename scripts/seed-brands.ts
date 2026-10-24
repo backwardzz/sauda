@@ -3,7 +3,7 @@
 // (лицензия CC BY-SA, в каталоге хранится только ссылка). Берутся только фото на белом фоне: скрипт скачивает
 // каждое фото и проверяет края кадра. Товары без такого фото в каталог не попадают. Работает только с локальной базой.
 // Размер в названии становится видом товара: «Coca cola 0.5л» и «Coca cola 1л» — один товар с двумя видами.
-// Кроме марок создаётся оптовая база с ценами на все товары пакетов «У меня новый магазин».
+// Кроме марок создаётся оптовая база: около 40 товаров из пакетов «У меня новый магазин», разных категорий.
 //   npm run seed:brands            — создать или обновить демо-компании (вход rep@sauda.test)
 //   npm run seed:brands -- --dry   — показать, что попадёт в каталоги, без записи в базу
 // Ответы баз кешируются в samples/image-cache.json: повторный запуск в сеть почти не ходит.
@@ -170,7 +170,7 @@ const int = (a: number, b: number) => {
 };
 
 type Row = { name: string; barcode: string; unit: string; price: number; category: string; pack_qty: number; image_url: string };
-/** Оптовая база: цены на все товары пакетов «У меня новый магазин», чтобы новый магазин мог сразу заказать. */
+/** Оптовая база: часть товаров пакетов «У меня новый магазин», чтобы новый магазин мог сразу что-то заказать. */
 const WHOLESALE = {
   name: 'ТОО «Оптовая база Алатау»',
   description: `Продукты, напитки, бытовая химия и товары первой необходимости одной поставкой. ${DEMO}`,
@@ -178,6 +178,22 @@ const WHOLESALE = {
   delivery_note: 'Доставка ежедневно, заказ до 18:00 накануне', payment_terms: 'Наличными или переводом при получении',
   cities: ['Астана', 'Шымкент', 'Караганда', 'Актобе'],
 };
+/** Сколько товаров в демо-каталоге оптовой базы: немного, чтобы было видно, что у каждой компании свой каталог. */
+const WHOLESALE_MAX = 40;
+
+/** Не больше max товаров: по одному из каждой категории по кругу, сначала товары с фото. */
+function spread(rows: Row[], max: number): Row[] {
+  const groups = new Map<string, Row[]>();
+  for (const r of [...rows].sort((a, b) => Number(!a.image_url) - Number(!b.image_url) || a.name.localeCompare(b.name, 'ru'))) {
+    groups.set(r.category, [...(groups.get(r.category) ?? []), r]);
+  }
+  const queues = [...groups.keys()].sort((a, b) => a.localeCompare(b, 'ru')).map((k) => groups.get(k)!);
+  const picked: Row[] = [];
+  while (picked.length < max && queues.some((q) => q.length)) {
+    for (const q of queues) if (q.length && picked.length < max) picked.push(q.shift()!);
+  }
+  return picked;
+}
 
 async function main() {
   if (!existsSync(FILE)) throw new Error(`Файл не найден: ${FILE}`);
@@ -274,14 +290,15 @@ async function main() {
     await publish(brand, 'manufacturer', rows);
   }
 
-  // оптовая база: всё, что входит в пакеты «У меня новый магазин», по цене чуть выше, чем у производителя
+  // оптовая база: часть пакетов «У меня новый магазин» по цене чуть выше, чем у производителя
   const starter = (await must(rep.from('catalog_products').select('name, barcode, unit, category, subcategory').neq('starter_pack', '').limit(5000))) as
     { name: string; barcode: string; unit: string; category: string; subcategory: string }[];
   const byCode = new Map(all.map((i) => [i.barcode, i]));
-  const wholesale: Row[] = starter.flatMap((c) => {
+  const candidates: Row[] = starter.flatMap((c) => {
     const src = byCode.get(c.barcode);
     return src ? [{ name: c.name, barcode: c.barcode, unit: c.unit, price: price(src, 0.85), category: cap(c.subcategory || c.category), pack_qty: c.unit === 'шт' ? 6 : 1, image_url: cachedImage(c.barcode) }] : [];
   });
+  const wholesale = spread(candidates, WHOLESALE_MAX);
   const wholesaleCount = wholesale.length ? await publish(WHOLESALE, 'wholesaler', wholesale) : 0;
 
   // вход для разработки (dev / admin1) видит новые компании как владелец
