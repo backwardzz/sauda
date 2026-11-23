@@ -35,7 +35,7 @@ jobs:
       - if: steps.enabled.outputs.on
         uses: actions/checkout@v7
       - if: steps.enabled.outputs.on
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: npm
